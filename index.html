@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Huddle Team Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: calm blue-grey workspace, white work surfaces, cobalt for actions, each teammate carries their own color. */
+:root{
+  --bg:#f2f4f9; --surface:#ffffff; --sunk:#f7f8fc; --ink:#172033; --muted:#5d6981; --line:#dfe4ee;
+  --accent:#3355e0; --accent-ink:#ffffff; --soft:#e9eeff;
+  --good:#1a8f5f; --good-soft:#dff5ea; --warn:#b97400; --warn-soft:#fdf0d5; --bad:#cf3d55; --bad-soft:#fde4e8;
+  --display:"Sora","Figtree",system-ui,sans-serif; --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --r:14px; --shadow:0 1px 2px rgba(23,32,51,.05),0 6px 20px rgba(23,32,51,.06);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e131e; --surface:#171e2d; --sunk:#131927; --ink:#e7ebf5; --muted:#9aa6bd; --line:#2a3449;
+  --accent:#7f97ff; --accent-ink:#0e131e; --soft:#1d294a;
+  --good:#4fcf98; --good-soft:#143326; --warn:#f0b34a; --warn-soft:#3a2c10; --bad:#ff7d92; --bad-soft:#40192230;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25); color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg:#0e131e; --surface:#171e2d; --sunk:#131927; --ink:#e7ebf5; --muted:#9aa6bd; --line:#2a3449;
+  --accent:#7f97ff; --accent-ink:#0e131e; --soft:#1d294a;
+  --good:#4fcf98; --good-soft:#143326; --warn:#f0b34a; --warn-soft:#3a2c10; --bad:#ff7d92; --bad-soft:#40192230;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px rgba(0,0,0,.25); color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--body);-webkit-font-smoothing:antialiased;padding-bottom:40px}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:26px} h2{font-size:15px} h3{font-size:14px}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.muted{color:var(--muted)} .small{font-size:13px}
+[hidden]{display:none!important}
+
+/* header */
+.top{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.top-in{max-width:1320px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:16px}
+.brand{display:flex;align-items:center;gap:9px;font:700 17px var(--display)}
+.brand i{width:26px;height:26px;border-radius:8px;background:var(--accent);display:grid;place-items:center}
+.brand i::after{content:"";width:10px;height:10px;border-radius:50%;border:3px solid var(--accent-ink)}
+.nav{display:flex;gap:4px;margin-left:8px}
+.nav a{padding:7px 13px;border-radius:9px;text-decoration:none;color:var(--muted);font-weight:600}
+.nav a:hover{color:var(--ink);background:var(--surface)}
+.nav a.on{background:var(--soft);color:var(--accent)}
+.top-r{margin-left:auto;display:flex;align-items:center;gap:10px}
+.status{font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;gap:6px}
+.status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--warn)}
+.status.live::before{background:var(--good)} .status.off::before{background:var(--bad)}
+.me{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:5px 12px 5px 6px;font-weight:600;max-width:190px}
+.me span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.av{width:24px;height:24px;border-radius:50%;display:inline-grid;place-items:center;color:#fff;font:700 11px var(--body);flex:none;background:var(--c,#8892a6)}
+main{max-width:1320px;margin:0 auto;padding:22px 20px}
+
+/* generic */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:16px 18px;min-width:0}
+.card>h2{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+.card>h2 .count{font:600 12px var(--body);color:var(--muted)}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:7px 13px;font-weight:600;white-space:nowrap;text-decoration:none;color:var(--ink);display:inline-block}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08);color:var(--accent-ink)}
+.btn.danger{color:var(--bad)} .btn.danger:hover{border-color:var(--bad);color:var(--bad)}
+.btn.sm{padding:4px 9px;font-size:13px;border-radius:7px}
+.btn.on{background:var(--soft);border-color:var(--accent);color:var(--accent)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:7px 12px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--soft);color:var(--accent)}
+.who{display:inline-flex;align-items:center;gap:5px;font-weight:600;font-size:13px;white-space:nowrap}
+.who i{width:9px;height:9px;border-radius:50%;background:var(--c)}
+.pill{display:inline-block;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.pill.high,.pill.b{background:var(--bad-soft);color:var(--bad)} .pill.med{background:var(--warn-soft);color:var(--warn)}
+.pill.low{background:var(--sunk);color:var(--muted)} .pill.f{background:var(--good-soft);color:var(--good)}
+.pill.u{background:var(--line);color:var(--muted)} .pill.sess{background:var(--soft);color:var(--accent)}
+.bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;flex:1;min-width:60px}
+.bar i{display:block;height:100%;background:var(--good);border-radius:99px;transition:width .3s}
+.prog{display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:10px}
+.empty{color:var(--muted);font-size:14px;padding:6px 0}
+.row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.banner{background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-weight:600}
+
+/* tasks */
+.tasks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.task{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:flex-start;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface);border-left:3px solid var(--line)}
+.task.p-high{border-left-color:var(--bad)} .task.p-med{border-left-color:var(--warn)}
+.task.done{background:var(--sunk);border-left-color:var(--good)}
+.task.done .t-title{text-decoration:line-through;color:var(--muted)}
+.check{flex:none;width:22px;height:22px;border-radius:7px;border:2px solid var(--muted);background:var(--surface);margin-top:1px;display:grid;place-items:center;padding:0}
+.check:hover{border-color:var(--good)}
+.task.done .check{background:var(--good);border-color:var(--good)}
+.task.done .check::after{content:"";width:10px;height:5px;border-left:2.5px solid #fff;border-bottom:2.5px solid #fff;transform:rotate(-45deg) translateY(-1px)}
+.t-main{flex:1 1 190px;min-width:0}
+.t-title{font-weight:600;overflow-wrap:anywhere}
+.t-desc{font-size:13px;color:var(--muted);overflow-wrap:anywhere;white-space:pre-wrap}
+.t-meta{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:12.5px;margin-top:4px;color:var(--muted)}
+.due.over{color:var(--bad);font-weight:700}
+.t-acts{display:flex;gap:2px;flex:none;margin-left:auto}
+.ib{border:0;background:none;border-radius:7px;padding:3px 7px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.ib:hover{background:var(--sunk);color:var(--accent)} .ib.del:hover{color:var(--bad)}
+.quick{display:flex;gap:6px;margin-top:10px}
+.quick input{flex:1;min-width:0}
+input[type=text],input[type=date],input[type=time],select,textarea{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:8px 10px;width:100%}
+textarea{resize:vertical;min-height:70px}
+
+/* dashboard */
+.hello{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.hello p{margin:2px 0 0;color:var(--muted)}
+.dash{display:grid;grid-template-columns:repeat(12,1fr);gap:16px}
+.c4{grid-column:span 4} .c5{grid-column:span 5} .c7{grid-column:span 7} .c8{grid-column:span 8} .c6{grid-column:span 6} .c3{grid-column:span 3}
+.agenda{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.agenda li{display:flex;gap:10px;align-items:baseline;border-left:3px solid var(--c,var(--line));padding:2px 0 2px 10px}
+.agenda time{font-weight:700;font-size:13px;white-space:nowrap;min-width:92px;font-variant-numeric:tabular-nums}
+.ring{display:flex;align-items:center;gap:16px}
+.ring svg{flex:none}
+.ring b{font:700 24px var(--display)}
+.people{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:9px}
+.people li{display:flex;align-items:center;gap:9px}
+.people .n{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.people .n small{display:block;color:var(--muted);font-weight:400;overflow:hidden;text-overflow:ellipsis}
+.mini{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+.mini li{display:flex;gap:8px;align-items:baseline;justify-content:space-between}
+.mini .x{min-width:0;overflow-wrap:anywhere}
+.daygrp{font-weight:700;font-size:12.5px;color:var(--muted);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.04em}
+.daygrp:first-child{margin-top:0}
+
+/* sessions and events */
+.session{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
+.session .s-time{font-weight:600;font-size:13px;color:var(--muted)}
+.session .goals{font-size:13.5px;white-space:pre-wrap;overflow-wrap:anywhere}
+.stack{display:flex;flex-direction:column;gap:10px}
+.evrow{border:1px solid var(--line);border-left:4px solid var(--c);border-radius:10px;padding:8px 12px}
+.evrow .d{font-size:13px;color:var(--muted);white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* calendar */
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.toolbar h1{font-size:22px;margin-right:auto}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+.fchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:4px 11px 4px 8px;font-weight:600;font-size:13px}
+.fchip i{width:10px;height:10px;border-radius:50%;background:var(--c)}
+.fchip.off{opacity:.45;text-decoration:line-through}
+.cal-wrap{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:16px;align-items:start}
+.month{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
+.dow{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--line);font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.dow span{padding:8px 8px}
+.grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr))}
+.cell{min-height:108px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:6px;display:flex;flex-direction:column;gap:3px;cursor:pointer;min-width:0}
+.cell:nth-child(7n){border-right:0}
+.cell:hover{background:var(--sunk)}
+.cell.other .num{color:var(--muted);opacity:.55}
+.cell.sel{background:var(--soft);box-shadow:inset 0 0 0 2px var(--accent)}
+.num{font-weight:700;font-size:13px;width:24px;height:24px;display:grid;place-items:center;border-radius:50%;font-variant-numeric:tabular-nums}
+.cell.today .num{background:var(--accent);color:var(--accent-ink)}
+.chips{display:flex;flex-direction:column;gap:2px;min-width:0}
+.chip{font-size:11.5px;font-weight:600;padding:1px 6px;border-radius:5px;background:color-mix(in srgb,var(--c) 16%,var(--surface));border-left:3px solid var(--c);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip.sess{background:var(--accent);color:var(--accent-ink);border-left-color:var(--accent)}
+.more{font-size:11px;color:var(--muted);font-weight:600}
+.tprog{margin-top:auto;display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--muted)}
+.tprog .bar{height:5px;min-width:0}
+.tgrid{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.tg-head{display:grid;border-bottom:1px solid var(--line)}
+.tg-head button{border:0;background:none;padding:8px 2px;font-weight:700;font-size:13px;color:var(--muted);border-left:1px solid var(--line);min-width:0}
+.tg-head button b{display:block;font:700 17px var(--display);color:var(--ink)}
+.tg-head button.today b{color:var(--accent)} .tg-head button.sel{background:var(--soft)}
+.tg-body{display:grid;position:relative}
+.hours div{font-size:11px;color:var(--muted);text-align:right;padding-right:6px;transform:translateY(-7px);font-variant-numeric:tabular-nums}
+.col{position:relative;border-left:1px solid var(--line);background:repeating-linear-gradient(to bottom,transparent 0,transparent 43px,var(--line) 43px,var(--line) 44px);cursor:cell;min-width:0}
+.ev{position:absolute;border-radius:7px;padding:3px 6px;font-size:12px;line-height:1.25;overflow:hidden;cursor:pointer;background:color-mix(in srgb,var(--c) 20%,var(--surface));border:1px solid color-mix(in srgb,var(--c) 45%,var(--surface));border-left:3px solid var(--c);text-align:left}
+.ev b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ev.sess{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.nowline{position:absolute;left:0;right:0;height:2px;background:var(--bad);z-index:2;pointer-events:none}
+.panel h2{font-size:17px}
+.panel section{margin-top:16px}
+.panel h3{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-size:12px}
+
+/* availability */
+.agrid{display:grid;grid-template-columns:44px repeat(7,minmax(0,1fr));gap:3px;user-select:none}
+.agrid .h{font-size:11px;color:var(--muted);text-align:right;padding-right:4px;line-height:30px;font-variant-numeric:tabular-nums}
+.agrid .dh{font-size:12px;font-weight:700;text-align:center;color:var(--muted);padding-bottom:3px}
+.agrid .dh b{display:block;color:var(--ink);font-size:14px}
+.acell{height:30px;border-radius:6px;border:1px solid var(--line);background:var(--sunk);font-size:11.5px;font-weight:700;color:var(--muted);padding:0;display:grid;place-items:center}
+.acell.my{touch-action:none}
+.acell.st-f{background:var(--good);border-color:var(--good);color:#fff}
+.acell.st-b{background:var(--bad);border-color:var(--bad);color:#fff}
+.acell.st-u{background:var(--muted);border-color:var(--muted);color:#fff}
+.acell.l1{background:color-mix(in srgb,var(--good) 18%,var(--surface))}
+.acell.l2{background:color-mix(in srgb,var(--good) 40%,var(--surface));color:var(--ink)}
+.acell.l3{background:color-mix(in srgb,var(--good) 62%,var(--surface));color:var(--ink)}
+.acell.all{background:var(--good);border-color:var(--good);color:#fff;box-shadow:0 0 0 2px color-mix(in srgb,var(--good) 35%,transparent)}
+.acell.past{opacity:.4}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:10px 0}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:4px;vertical-align:-1px;margin-right:5px;border:1px solid var(--line)}
+.avail-wrap{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+.best{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.best li{display:flex;justify-content:space-between;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.best b{display:block}
+
+/* week tasks */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
+.stat b{display:block;font:700 24px var(--display);font-variant-numeric:tabular-nums}
+.stat span{font-size:13px;color:var(--muted);font-weight:600}
+.week{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.daycol h2 button{border:0;background:none;padding:0;font:inherit;text-align:left}
+.daycol h2 button:hover{color:var(--accent)}
+.daycol.today{border-color:var(--accent)}
+
+/* modal, toast, welcome */
+.overlay{position:fixed;inset:0;background:rgba(10,15,28,.5);z-index:50;display:grid;place-items:center;padding:16px;overflow:auto}
+.modal{background:var(--surface);border-radius:16px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:100%;max-width:480px;padding:20px 22px;max-height:calc(100% - 8px);overflow:auto}
+.modal h2{font-size:19px;margin-bottom:14px}
+.field{display:flex;flex-direction:column;gap:4px;margin-bottom:12px}
+.field label,.field .lab{font-size:13px;font-weight:700;color:var(--muted)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.m-foot{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.m-foot .left{margin-right:auto}
+.err{color:var(--bad);font-weight:600;font-size:13.5px;min-height:1.2em;margin-top:4px}
+.swatches{display:flex;gap:7px;flex-wrap:wrap}
+.swatches button{width:28px;height:28px;border-radius:50%;border:3px solid var(--surface);background:var(--c);box-shadow:0 0 0 1px var(--line);padding:0}
+.swatches button.on{box-shadow:0 0 0 2px var(--ink)}
+#toasts{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:80;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none;width:max-content;max-width:92vw}
+.toast{background:var(--ink);color:var(--bg);padding:9px 15px;border-radius:10px;font-weight:600;font-size:14px;box-shadow:var(--shadow)}
+.toast.bad{background:var(--bad);color:#fff}
+#welcome{position:fixed;inset:0;z-index:60;background:var(--bg);display:grid;place-items:center;padding:20px;overflow:auto}
+.w-card{max-width:440px;width:100%}
+.w-card h1{font-size:30px;margin:18px 0 6px}
+.w-card p{color:var(--muted);margin:0 0 18px}
+.w-card form{display:flex;gap:8px}
+.w-card input{font-size:17px;padding:11px 13px}
+.w-card .btn{padding:11px 18px;font-size:16px}
+.claim{margin-top:22px;padding-top:16px;border-top:1px solid var(--line)}
+.claim .row{margin-top:8px}
+
+/* bottom nav on phones */
+.bnav{display:none}
+@media (max-width:1100px){.cal-wrap,.avail-wrap{grid-template-columns:minmax(0,1fr)} .c4,.c5,.c7,.c8,.c3{grid-column:span 6}}
+@media (max-width:760px){
+  .nav{display:none}
+  .bnav{display:grid;grid-template-columns:repeat(4,1fr);position:fixed;bottom:0;left:0;right:0;z-index:30;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+  .bnav a{padding:10px 2px 9px;text-align:center;text-decoration:none;color:var(--muted);font-weight:700;font-size:12.5px;border-top:3px solid transparent}
+  .bnav a.on{color:var(--accent);border-top-color:var(--accent)}
+  body{padding-bottom:76px}
+  main{padding:16px}
+  .top-in{padding:9px 16px}
+  .status span{display:none}
+  .dash{display:flex;flex-direction:column}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .cell{min-height:64px;padding:4px 3px;align-items:center}
+  .chips{flex-direction:row;flex-wrap:wrap;gap:3px;justify-content:center}
+  .chip{font-size:0;width:8px;height:8px;padding:0;border-radius:50%;border:0;background:var(--c)}
+  .chip.sess{border-radius:2px}
+  .more{display:none}
+  .tprog span{display:none} .tprog{width:100%}
+  .dow span{padding:6px 0;text-align:center}
+  .toolbar h1{width:100%;font-size:20px}
+  .task{flex-wrap:wrap} .t-acts{width:100%;justify-content:flex-end}
+  .agrid{grid-template-columns:34px repeat(7,minmax(0,1fr));gap:2px}
+  .ev{font-size:11px;padding:2px 3px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="brand"><i></i>Huddle</div>
+    <nav class="nav" id="nav" aria-label="Main">
+      <a href="#dashboard" data-v="dashboard">Dashboard</a>
+      <a href="#calendar" data-v="calendar">Calendar</a>
+      <a href="#availability" data-v="availability">Availability</a>
+      <a href="#tasks" data-v="tasks">Tasks</a>
+    </nav>
+    <div class="top-r">
+      <div class="status" id="status"><span>Connecting</span></div>
+      <button class="me" id="meBtn" data-act="profile" title="Change your name or color" hidden><i class="av" id="meAv"></i><span id="meName"></span></button>
+    </div>
+  </div>
+</header>
+<main id="view" aria-live="off"></main>
+<nav class="bnav" id="bnav" aria-label="Main">
+  <a href="#dashboard" data-v="dashboard">Dashboard</a>
+  <a href="#calendar" data-v="calendar">Calendar</a>
+  <a href="#availability" data-v="availability">Availability</a>
+  <a href="#tasks" data-v="tasks">Tasks</a>
+</nav>
+<div id="welcome" hidden>
+  <div class="w-card">
+    <div class="brand"><i></i>Huddle</div>
+    <h1>Welcome to the team workspace</h1>
+    <p>Enter your name to get started. There is no password. Your name shows next to the events and tasks you add, and this device will remember you.</p>
+    <form id="welcomeForm">
+      <input type="text" id="welcomeName" maxlength="40" placeholder="Your name" autocomplete="name" aria-label="Your name">
+      <button class="btn primary" type="submit">Join</button>
+    </form>
+    <div class="err" id="welcomeErr"></div>
+    <div class="claim" id="claim" hidden></div>
+  </div>
+</div>
+<div id="modalRoot"></div>
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+/* ---------- helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return ymd(d); };
+const today = () => ymd(new Date());
+const weekStart = s => addDays(s, -parse(s).getDay());
+const mins = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+const fmtTime = t => { let [h, m] = t.split(':').map(Number); const ap = h < 12 ? 'am' : 'pm'; h = h % 12 || 12; return m ? `${h}:${pad(m)}${ap}` : `${h}${ap}`; };
+const fmtHour = h => fmtTime(pad(h) + ':00');
+const fmtD = (s, o) => parse(s).toLocaleDateString('en-US', o);
+const fmtLong = s => fmtD(s, {weekday:'long', month:'long', day:'numeric'});
+const fmtShort = s => fmtD(s, {weekday:'short', month:'short', day:'numeric'});
+const rel = s => { const t = today(); return s === t ? 'Today' : s === addDays(t, 1) ? 'Tomorrow' : s === addDays(t, -1) ? 'Yesterday' : fmtShort(s); };
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12));
+const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const PALETTE = ['#1c7ed6','#e5484d','#2f9e44','#f08c00','#9c36b5','#0ca678','#d6336c','#5c7cfa','#a9770e','#e8590c'];
+const PRIO = {high:'High', med:'Medium', low:'Low'};
+const ST = {f:'Free', b:'Busy', u:'Unavailable', '':'Not set'};
+const AH = Array.from({length:16}, (_, i) => i + 7); // availability hours: 7am to 10pm starts
+const ls = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+
+function toast(msg, bad) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (bad ? ' bad' : '');
+  el.textContent = msg;
+  $('#toasts').append(el);
+  setTimeout(() => el.remove(), bad ? 5000 : 2600);
+}
+
+/* ---------- shared store ---------- */
+const COLS = ['members','events','tasks','avail','rsvps'];
+const Store = { data: {}, ready: false, failed: '' };
+COLS.forEach(c => Store.data[c] = {});
+let backend = null;
+const chains = {};
+
+function setStatus(s) {
+  const el = $('#status');
+  el.className = 'status ' + (s === 'live' ? 'live' : s === 'off' ? 'off' : '');
+  el.firstElementChild.textContent = s === 'live' ? 'Live' : s === 'off' ? 'Offline, retrying' : 'Connecting';
+  el.title = s === 'live' ? 'Changes sync to everyone automatically' : '';
+}
+function applyLocal(col, id, doc) {
+  if (doc == null) delete Store.data[col][id]; else Store.data[col][id] = doc;
+  scheduleRender();
+}
+async function write(op, col, id, data) {
+  if (!backend || !Store.ready) { toast('Still connecting to the shared database. Try again in a moment.', true); return false; }
+  const prev = Store.data[col][id];
+  if (op === 'update' && !prev) return false;
+  applyLocal(col, id, op === 'delete' ? null : op === 'update' ? {...prev, ...data} : data);
+  const key = col + '/' + id;
+  const run = () => backend.write(op, col, id, data);
+  const p = (chains[key] || Promise.resolve()).then(run, run);
+  chains[key] = p.catch(() => {});
+  try { await p; return true; }
+  catch (e) {
+    applyLocal(col, id, prev ?? null);
+    toast(e && e.code === 'invalid_argument' ? 'That change was not saved. You may have view-only access to this workspace.' : 'Not saved: ' + ((e && e.message) || 'the shared database could not be reached') + '.', true);
+    return false;
+  }
+}
+const DB = {
+  set: (col, id, doc) => write('set', col, id, doc),
+  update: (col, id, patch) => write('update', col, id, patch),
+  remove: (col, id) => write('delete', col, id),
+};
+function markReady() {
+  if (Store.ready) return;
+  Store.ready = true; clearTimeout(loadTimer); Store.failed = '';
+  syncIdentity(); scheduleRender();
+}
+
+// Backend 1: this app's own server (REST + Server-Sent Events).
+function httpBackend() {
+  return {
+    start() {
+      const es = new EventSource('api/stream');
+      es.onopen = () => setStatus('live');
+      es.onerror = () => setStatus('off');
+      es.onmessage = e => {
+        const m = JSON.parse(e.data);
+        if (m.t === 'snap') { COLS.forEach(c => Store.data[c] = m.state[c] || {}); markReady(); scheduleRender(); }
+        else if (m.t === 'op') { if (m.doc) Store.data[m.col][m.id] = m.doc; else delete Store.data[m.col][m.id]; scheduleRender(); }
+      };
+    },
+    async write(op, col, id, data) {
+      const r = await fetch('api/op', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({op, col, id, data})});
+      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j.error || 'the server refused the change'); }
+    },
+  };
+}
+// Backend 3: a free Firebase Realtime Database, used when the page is hosted as a plain static site.
+// Paste the database URL between the quotes, e.g. 'https://your-project-default-rtdb.firebaseio.com'
+const FIREBASE_URL = 'https://huddle-team-c43fc-default-rtdb.firebaseio.com';
+const shapeOk = {
+  members: d => typeof d.name === 'string' && d.name && typeof d.createdAt === 'number',
+  events: d => [d.title, d.date, d.start, d.end, d.createdBy].every(x => typeof x === 'string') && /^\d{4}-\d\d-\d\d$/.test(d.date) && /^\d\d:\d\d$/.test(d.start) && /^\d\d:\d\d$/.test(d.end),
+  tasks: d => typeof d.title === 'string' && typeof d.date === 'string' && /^\d{4}-\d\d-\d\d$/.test(d.date) && typeof d.createdBy === 'string',
+  avail: d => true,
+  rsvps: d => typeof d.eventId === 'string' && typeof d.memberId === 'string' && typeof d.status === 'string',
+};
+function firebaseBackend(base) {
+  base = base.replace(/\/+$/, '') + '/huddle';
+  let tree = {};
+  const setAt = (segs, val) => {
+    if (!segs.length) { tree = val && typeof val === 'object' ? val : {}; return; }
+    let node = tree;
+    for (let i = 0; i < segs.length - 1; i++) { if (!node[segs[i]] || typeof node[segs[i]] !== 'object') node[segs[i]] = {}; node = node[segs[i]]; }
+    if (val == null) delete node[segs[segs.length - 1]]; else node[segs[segs.length - 1]] = val;
+  };
+  const rebuild = () => {
+    COLS.forEach(c => { const o = {}, src = tree[c]; if (src && typeof src === 'object') for (const id in src) { const d = src[id]; if (d && typeof d === 'object' && shapeOk[c](d)) o[id] = d; } Store.data[c] = o; });
+    markReady(); scheduleRender();
+  };
+  const segsOf = p => p.split('/').filter(Boolean);
+  return {
+    start() {
+      const es = new EventSource(base + '.json');
+      es.onopen = () => setStatus('live');
+      es.onerror = () => setStatus('off');
+      es.addEventListener('put', e => { const m = JSON.parse(e.data); setAt(segsOf(m.path), m.data); rebuild(); });
+      es.addEventListener('patch', e => { const m = JSON.parse(e.data), at = segsOf(m.path); for (const k in m.data) setAt(at.concat(segsOf(k)), m.data[k]); rebuild(); });
+      es.addEventListener('cancel', () => { setStatus('off'); Store.failed = 'The database refused the connection. Check its rules.'; scheduleRender(); });
+    },
+    async write(op, col, id, data) {
+      const r = await fetch(`${base}/${col}/${id}.json`, {method: op === 'delete' ? 'DELETE' : op === 'update' ? 'PATCH' : 'PUT', body: op === 'delete' ? undefined : JSON.stringify(data)});
+      if (!r.ok) throw new Error('the database refused the change');
+    },
+  };
+}
+// Backend 2: the shared database built into a Claude artifact page.
+function claudeBackend() {
+  let db = null;
+  return {
+    async start() {
+      db = await window.claude.use('db');
+      if (!db) { Store.failed = 'The shared database is not available in this view. Sign in to Claude and open the page again.'; setStatus('off'); scheduleRender(); return; }
+      const seen = new Set();
+      COLS.forEach(c => db.collection(c).onSnapshot(snap => {
+        const o = {}; snap.docs.forEach(d => { o[d.id] = d.data(); });
+        Store.data[c] = o; seen.add(c);
+        if (seen.size === COLS.length) { markReady(); setStatus('live'); }
+        scheduleRender();
+      }, () => { setStatus('off'); }));
+    },
+    write(op, col, id, data) {
+      const ref = db.doc(col + '/' + id);
+      return op === 'delete' ? ref.delete() : op === 'update' ? ref.update(data) : ref.set(data);
+    },
+  };
+}
+let loadTimer = setTimeout(() => { if (!Store.ready && !Store.failed) { Store.failed = 'The shared database cannot be reached yet. Still trying.'; scheduleRender(); } }, 10000);
+async function connect() {
+  if (FIREBASE_URL) { backend = firebaseBackend(FIREBASE_URL); backend.start(); return; }
+  const hasClaude = () => window.claude && typeof window.claude.use === 'function';
+  if (!hasClaude()) {
+    try { const r = await fetch('api/health'); if (r.ok) { backend = httpBackend(); backend.start(); return; } } catch {}
+    for (let i = 0; i < 15 && !hasClaude(); i++) await new Promise(r => setTimeout(r, 200));
+  }
+  if (hasClaude()) { backend = claudeBackend(); backend.start(); return; }
+  Store.failed = 'This page is not connected to a shared database. Start the server (npm start) and open the address it prints.';
+  setStatus('off'); scheduleRender();
+}
+
+/* ---------- identity (name only, remembered on this device) ---------- */
+let meId = ls.get('huddle_id');
+if (!meId) { meId = uid(); ls.set('huddle_id', meId); }
+let myName = ls.get('huddle_name') || '';
+const validColor = c => /^#[0-9a-fA-F]{6}$/.test(c || '') ? c : '#8892a6';
+function nextColor() {
+  const used = new Set(Object.values(Store.data.members).map(m => m.color));
+  return PALETTE.find(c => !used.has(c)) || PALETTE[Object.keys(Store.data.members).length % PALETTE.length];
+}
+function syncIdentity() {
+  const mine = Store.data.members[meId];
+  if (mine) { if (mine.name !== myName) { myName = mine.name; ls.set('huddle_name', myName); } }
+  else if (myName) DB.set('members', meId, {name: myName, color: nextColor(), createdAt: Date.now()});
+  renderWelcome();
+}
+function renderWelcome() {
+  const w = $('#welcome');
+  w.hidden = !!myName;
+  if (myName) return;
+  const list = members();
+  const claim = $('#claim');
+  claim.hidden = !list.length;
+  if (list.length) claim.innerHTML = `<div class="small muted">Already on the team from another device? Pick your name.</div><div class="row">${list.map(m => `<button class="fchip" data-act="claim" data-id="${esc(m.id)}" style="--c:${validColor(m.color)}"><i></i>${esc(m.name)}</button>`).join('')}</div>`;
+}
+$('#welcomeForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const name = $('#welcomeName').value.trim();
+  if (!name) { $('#welcomeErr').textContent = 'Type your name to continue.'; return; }
+  if (!Store.ready) { $('#welcomeErr').textContent = 'Still connecting to the shared workspace. Try again in a moment.'; return; }
+  myName = name; ls.set('huddle_name', name);
+  DB.set('members', meId, {name, color: nextColor(), createdAt: Date.now()});
+  renderWelcome(); scheduleRender();
+});
+
+/* ---------- data access ---------- */
+const list = col => Object.entries(Store.data[col]).map(([id, d]) => ({id, ...d}));
+const members = () => list('members').sort((a, b) => a.createdAt - b.createdAt);
+const mName = id => Store.data.members[id]?.name || 'Someone';
+const mColor = id => validColor(Store.data.members[id]?.color);
+const byStart = (a, b) => (a.date + a.start).localeCompare(b.date + b.start);
+const prioRank = {high: 3, med: 2, low: 1};
+const eventsOn = d => list('events').filter(e => e.date === d && (e.kind === 'session' || !ui.hidden.has(e.createdBy))).sort(byStart);
+const tasksOn = d => list('tasks').filter(t => t.date === d).sort((a, b) => (a.done - b.done) || (prioRank[b.priority] - prioRank[a.priority]) || (a.createdAt - b.createdAt));
+const rsvp = (eid, mid) => Store.data.rsvps[eid + '_' + mid]?.status || '';
+const going = (eid, st) => members().filter(m => rsvp(eid, m.id) === st);
+const evColor = e => e.kind === 'session' ? 'var(--accent)' : mColor(e.createdBy);
+const who = id => `<span class="who" style="--c:${mColor(id)}"><i></i>${esc(mName(id))}</span>`;
+const av = (id, name) => `<i class="av" style="--c:${mColor(id)}">${esc((name || mName(id)).trim().charAt(0).toUpperCase())}</i>`;
+const progHTML = arr => { const d = arr.filter(t => t.done).length, n = arr.length, p = n ? Math.round(d / n * 100) : 0; return `<div class="prog"><div class="bar"><i style="width:${p}%"></i></div><span>${d} of ${n} done${n ? ` (${p}%)` : ''}</span></div>`; };
+
+// A member's status for one hour of one date: calendar events win, then their weekly availability.
+function slotStatus(mid, date, h, dayEvents) {
+  const a = h * 60, b = a + 60;
+  const busy = (dayEvents || list('events').filter(e => e.date === date)).some(e => mins(e.start) < b && mins(e.end) > a && ((e.kind === 'event' && e.createdBy === mid) || (e.kind === 'session' && rsvp(e.id, mid) === 'yes')));
+  if (busy) return 'b';
+  const slots = mid === meId && draft ? draft : Store.data.avail[mid]?.slots;
+  return (slots && slots[parse(date).getDay() + '-' + h]) || '';
+}
+const hasAvail = mid => Object.keys(Store.data.avail[mid]?.slots || {}).length > 0;
+
+/* ---------- UI state ---------- */
+const VIEWS = ['dashboard','calendar','availability','tasks'];
+const ui = { view: 'dashboard', calView: 'month', sel: today(), hidden: new Set(), availTab: 'team', availWeek: weekStart(today()), paint: 'f', taskWeek: weekStart(today()) };
+let draft = null, saveT = null, painting = false, raf = 0;
+function route() { const h = location.hash.slice(1); ui.view = VIEWS.includes(h) ? h : 'dashboard'; scheduleRender(); window.scrollTo(0, 0); }
+window.addEventListener('hashchange', route);
+function scheduleRender() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; render(); }); }
+
+function render() {
+  if (painting) return;
+  const root = $('#view');
+  const keep = {}; root.querySelectorAll('[data-keep]').forEach(el => keep[el.id] = el.value);
+  const act = document.activeElement, aid = act && root.contains(act) ? act.id : '';
+  let ss = null; try { ss = aid ? act.selectionStart : null; } catch {}
+  root.innerHTML = !Store.ready
+    ? `<div class="card"><h2>${Store.failed ? 'Not connected' : 'Loading the team workspace'}</h2><div class="empty">${esc(Store.failed || 'Connecting to the shared database.')}</div></div>`
+    : (Store.failed ? `<div class="banner">${esc(Store.failed)}</div>` : '') + ({dashboard: vDashboard, calendar: vCalendar, availability: vAvailability, tasks: vTasks})[ui.view]();
+  for (const id in keep) { const el = document.getElementById(id); if (el) el.value = keep[id]; }
+  if (aid) { const el = document.getElementById(aid); if (el) { el.focus({preventScroll: true}); try { if (ss != null) el.setSelectionRange(ss, ss); } catch {} } }
+  document.querySelectorAll('#nav a, #bnav a').forEach(a => a.classList.toggle('on', a.dataset.v === ui.view));
+  const me = Store.data.members[meId];
+  $('#meBtn').hidden = !me;
+  if (me) { $('#meName').textContent = me.name; $('#meAv').textContent = me.name.charAt(0).toUpperCase(); $('#meAv').style.setProperty('--c', validColor(me.color)); }
+  if (!myName) renderWelcome();
+}
+
+/* ---------- shared pieces ---------- */
+function taskHTML(t) {
+  const over = t.deadline && !t.done && t.deadline < today();
+  return `<li class="task p-${esc(t.priority)}${t.done ? ' done' : ''}">
+    <button class="check" data-act="toggle-task" data-id="${esc(t.id)}" aria-pressed="${!!t.done}" aria-label="${t.done ? 'Mark as not done' : 'Mark as done'}: ${esc(t.title)}"></button>
+    <div class="t-main">
+      <div class="t-title">${esc(t.title)}</div>
+      ${t.desc ? `<div class="t-desc">${esc(t.desc)}</div>` : ''}
+      <div class="t-meta">
+        <span class="pill ${esc(t.priority)}">${PRIO[t.priority] || ''}</span>
+        ${t.assignee ? who(t.assignee) : '<span>Unassigned</span>'}
+        ${t.deadline ? `<span class="due${over ? ' over' : ''}">${over ? 'Overdue, due' : 'Due'} ${esc(rel(t.deadline))}</span>` : ''}
+        <span>${t.done && t.doneBy ? `Done by ${esc(mName(t.doneBy))}, a` : 'A'}dded by ${esc(mName(t.createdBy))}</span>
+      </div>
+    </div>
+    <div class="t-acts">
+      <button class="ib" data-act="move-task" data-id="${esc(t.id)}" title="Move to another day">Move</button>
+      <button class="ib" data-act="edit-task" data-id="${esc(t.id)}">Edit</button>
+      <button class="ib del" data-act="del-task" data-id="${esc(t.id)}">Delete</button>
+    </div></li>`;
+}
+function quickAdd(date) {
+  return `<form class="quick" data-form="quick-task" data-date="${date}">
+    <input type="text" id="qa-${date}" data-keep maxlength="200" placeholder="Add a task for ${esc(fmtD(date, {weekday:'short'}))}" aria-label="New task for ${esc(fmtLong(date))}">
+    <button class="btn primary" type="submit">Add</button>
+    <button class="btn" type="button" data-act="new-task" data-date="${date}" title="Add with assignee, priority and deadline">Details</button></form>`;
+}
+function sessionHTML(e, showDate) {
+  const mine = rsvp(e.id, meId);
+  const yes = going(e.id, 'yes'), maybe = going(e.id, 'maybe'), no = going(e.id, 'no');
+  const grp = (label, arr) => arr.length ? `<div class="row small"><span class="muted">${label} (${arr.length})</span>${arr.map(m => who(m.id)).join('')}</div>` : '';
+  return `<div class="session">
+    <div class="row"><span class="pill sess">Work session</span><b>${esc(e.title)}</b></div>
+    <div class="s-time">${showDate ? esc(rel(e.date)) + ', ' : ''}${fmtTime(e.start)} to ${fmtTime(e.end)}</div>
+    ${e.goals ? `<div class="goals"><span class="muted">Purpose and goals:</span> ${esc(e.goals)}</div>` : ''}
+    ${e.desc ? `<div class="goals muted">${esc(e.desc)}</div>` : ''}
+    ${grp('Going', yes)}${grp('Maybe', maybe)}${grp("Can't make it", no)}
+    ${!yes.length && !maybe.length && !no.length ? '<div class="small muted">No one has answered yet.</div>' : ''}
+    <div class="row"><span class="small muted">Are you going?</span>
+      ${[['yes','Going'],['maybe','Maybe'],['no',"Can't"]].map(([s, l]) => `<button class="btn sm${mine === s ? ' on' : ''}" data-act="rsvp" data-id="${esc(e.id)}" data-status="${s}" aria-pressed="${mine === s}">${l}</button>`).join('')}
+    </div>
+    <div class="row small"><span class="muted">Scheduled by ${esc(mName(e.createdBy))}</span>
+      <button class="ib" data-act="edit-event" data-id="${esc(e.id)}">Edit or reschedule</button>
+      <button class="ib del" data-act="del-event" data-id="${esc(e.id)}">Cancel session</button></div>
+  </div>`;
+}
+function eventRowHTML(e) {
+  return `<div class="evrow" style="--c:${mColor(e.createdBy)}">
+    <div class="row"><b>${esc(e.title)}</b><span class="small muted">${fmtTime(e.start)} to ${fmtTime(e.end)}</span></div>
+    ${e.desc ? `<div class="d">${esc(e.desc)}</div>` : ''}
+    <div class="row small">${who(e.createdBy)}<span class="muted">is busy</span>
+      <button class="ib" data-act="edit-event" data-id="${esc(e.id)}">Edit</button>
+      <button class="ib del" data-act="del-event" data-id="${esc(e.id)}">Delete</button></div>
+  </div>`;
+}
+
+/* ---------- dashboard ---------- */
+function vDashboard() {
+  const t = today(), now = new Date(), nowM = now.getHours() * 60 + now.getMinutes();
+  const all = list('tasks'), evs = list('events');
+  const tEv = evs.filter(e => e.date === t).sort(byStart);
+  const tTasks = tasksOn(t);
+  const late = all.filter(x => !x.done && x.date < t);
+  const sessions = evs.filter(e => e.kind === 'session' && (e.date > t || (e.date === t && mins(e.end) > nowM))).sort(byStart).slice(0, 3);
+  const done = all.filter(x => x.done), pct = all.length ? Math.round(done.length / all.length * 100) : 0;
+  const ws = weekStart(t), wk = all.filter(x => x.date >= ws && x.date <= addDays(ws, 6));
+  const recent = done.filter(x => x.doneAt).sort((a, b) => b.doneAt - a.doneAt).slice(0, 5);
+  const dl = all.filter(x => !x.done && x.deadline).sort((a, b) => a.deadline.localeCompare(b.deadline)).slice(0, 6);
+  const next = [1, 2, 3].map(i => addDays(t, i));
+  const C = 2 * Math.PI * 34;
+  const team = members().map(m => {
+    const cur = tEv.find(e => mins(e.start) <= nowM && mins(e.end) > nowM && ((e.kind === 'event' && e.createdBy === m.id) || (e.kind === 'session' && rsvp(e.id, m.id) === 'yes')));
+    const st = cur ? 'b' : slotStatus(m.id, t, now.getHours(), tEv);
+    return `<li>${av(m.id, m.name)}<span class="n">${esc(m.name)}${m.id === meId ? ' (you)' : ''}${cur ? `<small>${esc(cur.title)} until ${fmtTime(cur.end)}</small>` : ''}</span><span class="pill ${st}">${ST[st]}</span></li>`;
+  }).join('');
+  return `
+  <div class="hello"><div><h1>${esc(fmtLong(t))}</h1><p>${myName ? `Hi ${esc(myName)}. ` : ''}Here is where the project stands today.</p></div>
+    <div class="row"><button class="btn" data-act="new-event" data-kind="session" data-date="${t}">Schedule work session</button><button class="btn primary" data-act="new-task" data-date="${t}">Add task</button></div></div>
+  <div class="dash">
+    <div class="card c7"><h2>Today's tasks <span class="count">${tTasks.filter(x => !x.done).length} left</span></h2>
+      ${tTasks.length ? progHTML(tTasks) + `<ul class="tasks">${tTasks.map(taskHTML).join('')}</ul>` : '<div class="empty">Nothing planned for today yet. Add the first task below.</div>'}
+      ${late.length ? `<div class="row small" style="margin-top:10px"><span class="due over">${late.length} unfinished from earlier days</span><button class="btn sm" data-act="carry-today">Move them to today</button></div>` : ''}
+      ${quickAdd(t)}</div>
+    <div class="card c5"><h2>Today's schedule <span class="count">${tEv.length} item${tEv.length === 1 ? '' : 's'}</span></h2>
+      ${tEv.length ? `<ul class="agenda">${tEv.map(e => `<li style="--c:${evColor(e)}"><time>${fmtTime(e.start)} to ${fmtTime(e.end)}</time><span>${e.kind === 'session' ? '<span class="pill sess">Work session</span> ' : ''}<b>${esc(e.title)}</b> <span class="muted small">${esc(mName(e.createdBy))}</span></span></li>`).join('')}</ul>` : '<div class="empty">No events or work sessions today.</div>'}
+      <div class="row" style="margin-top:12px"><a class="btn sm" href="#calendar">Open calendar</a></div></div>
+    <div class="card c7"><h2>Upcoming work sessions</h2>
+      ${sessions.length ? `<div class="stack">${sessions.map(e => sessionHTML(e, true)).join('')}</div>` : '<div class="empty">No work sessions scheduled. Check Availability to find a time everyone is free.</div>'}</div>
+    <div class="card c5"><h2>Team right now</h2>${team ? `<ul class="people">${team}</ul>` : '<div class="empty">No teammates yet.</div>'}
+      <div class="row" style="margin-top:12px"><a class="btn sm" href="#availability">Update availability</a></div></div>
+    <div class="card c4"><h2>Project progress</h2>
+      <div class="ring"><svg width="84" height="84" viewBox="0 0 84 84" role="img" aria-label="${pct}% of all tasks done"><circle cx="42" cy="42" r="34" fill="none" stroke="var(--line)" stroke-width="9"/><circle cx="42" cy="42" r="34" fill="none" stroke="var(--good)" stroke-width="9" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct / 100)}" transform="rotate(-90 42 42)"/></svg>
+      <div><b>${pct}%</b><div class="muted small">${done.length} of ${all.length} tasks done overall</div></div></div>
+      <div style="margin-top:14px"><div class="small muted" style="font-weight:700;margin-bottom:4px">This week</div>${progHTML(wk)}</div></div>
+    <div class="card c4"><h2>Upcoming deadlines</h2>
+      ${dl.length ? `<ul class="mini">${dl.map(x => `<li><span class="x"><b>${esc(x.title)}</b> ${x.assignee ? who(x.assignee) : ''}</span><span class="due small${x.deadline < t ? ' over' : ''}">${esc(rel(x.deadline))}</span></li>`).join('')}</ul>` : '<div class="empty">No open deadlines.</div>'}</div>
+    <div class="card c4"><h2>Recently completed</h2>
+      ${recent.length ? `<ul class="mini">${recent.map(x => `<li><span class="x">${esc(x.title)}</span><span class="small muted">${esc(mName(x.doneBy || x.assignee || x.createdBy))}</span></li>`).join('')}</ul>` : '<div class="empty">Completed tasks show up here.</div>'}</div>
+    <div class="card" style="grid-column:1/-1"><h2>Next few days</h2>
+      ${next.map(d => { const ts = tasksOn(d), ss = eventsOn(d).filter(e => e.kind === 'session'); return `<div class="daygrp">${esc(rel(d))}${d === addDays(t, 1) ? ', ' + esc(fmtShort(d)) : ''}</div>${ts.length || ss.length ? `<ul class="mini">${ss.map(e => `<li><span class="x"><span class="pill sess">Work session</span> <b>${esc(e.title)}</b></span><span class="small muted">${fmtTime(e.start)}</span></li>`).join('')}${ts.map(x => `<li><span class="x">${x.done ? '<s class="muted">' + esc(x.title) + '</s>' : esc(x.title)} ${x.assignee ? who(x.assignee) : ''}</span><span class="pill ${esc(x.priority)}">${PRIO[x.priority]}</span></li>`).join('')}</ul>` : '<div class="empty">Nothing planned.</div>'}`; }).join('')}
+      <div class="row" style="margin-top:12px"><a class="btn sm" href="#tasks">Plan the week</a></div></div>
+  </div>`;
+}
+
+/* ---------- calendar ---------- */
+function vCalendar() {
+  const s = ui.sel, d = parse(s), v = ui.calView;
+  const title = v === 'month' ? fmtD(s, {month:'long', year:'numeric'}) : v === 'day' ? fmtLong(s) : `${fmtD(weekStart(s), {month:'short', day:'numeric'})} to ${fmtD(addDays(weekStart(s), 6), {month:'short', day:'numeric', year:'numeric'})}`;
+  const ms = members();
+  let body;
+  if (v === 'month') {
+    const first = ymd(new Date(d.getFullYear(), d.getMonth(), 1)), start = weekStart(first);
+    const last = ymd(new Date(d.getFullYear(), d.getMonth() + 1, 0));
+    const n = Math.round((parse(weekStart(last)) - parse(start)) / 864e5) + 7;
+    let cells = '';
+    for (let i = 0; i < n; i++) {
+      const day = addDays(start, i), evs = eventsOn(day), ts = list('tasks').filter(t => t.date === day), dn = ts.filter(t => t.done).length;
+      cells += `<div class="cell${parse(day).getMonth() !== d.getMonth() ? ' other' : ''}${day === today() ? ' today' : ''}${day === s ? ' sel' : ''}" data-act="select-date" data-date="${day}" tabindex="0" role="button" aria-label="${esc(fmtLong(day))}, ${evs.length} events, ${ts.length} tasks">
+        <span class="num">${parse(day).getDate()}</span>
+        <span class="chips">${evs.slice(0, 3).map(e => `<span class="chip${e.kind === 'session' ? ' sess' : ''}" style="--c:${evColor(e)}">${fmtTime(e.start)} ${esc(e.title)}</span>`).join('')}</span>
+        ${evs.length > 3 ? `<span class="more">+${evs.length - 3} more</span>` : ''}
+        ${ts.length ? `<span class="tprog"><span class="bar"><i style="width:${dn / ts.length * 100}%"></i></span><span>${dn}/${ts.length} tasks</span></span>` : ''}</div>`;
+    }
+    body = `<div class="month"><div class="dow">${DOW.map(x => `<span>${x}</span>`).join('')}</div><div class="grid">${cells}</div></div>`;
+  } else {
+    body = timeGrid(v === 'day' ? [s] : Array.from({length: 7}, (_, i) => addDays(weekStart(s), i)));
+  }
+  return `<div class="toolbar"><h1>${esc(title)}</h1>
+      <div class="seg" role="group" aria-label="Move"><button data-act="cal-nav" data-dir="-1" aria-label="Previous">&#8249;</button><button data-act="cal-today">Today</button><button data-act="cal-nav" data-dir="1" aria-label="Next">&#8250;</button></div>
+      <div class="seg" role="group" aria-label="View">${['month','week','day'].map(x => `<button class="${v === x ? 'on' : ''}" data-act="cal-view" data-view="${x}">${x[0].toUpperCase() + x.slice(1)}</button>`).join('')}</div>
+      <button class="btn" data-act="new-event" data-kind="event" data-date="${s}">Add my event</button>
+      <button class="btn primary" data-act="new-event" data-kind="session" data-date="${s}">Work session</button></div>
+    ${ms.length ? `<div class="filters"><span class="small muted">Showing schedules for</span>${ms.map(m => `<button class="fchip${ui.hidden.has(m.id) ? ' off' : ''}" data-act="filter" data-id="${esc(m.id)}" style="--c:${validColor(m.color)}" aria-pressed="${!ui.hidden.has(m.id)}"><i></i>${esc(m.name)}</button>`).join('')}<span class="fchip" style="--c:var(--accent)"><i style="border-radius:3px"></i>Work sessions</span></div>` : ''}
+    <div class="cal-wrap"><div>${body}</div>${dayPanel(s)}</div>`;
+}
+function timeGrid(days) {
+  const H = 44; let h0 = 7, h1 = 22;
+  const per = days.map(d => eventsOn(d));
+  per.flat().forEach(e => { h0 = Math.min(h0, Math.floor(mins(e.start) / 60)); h1 = Math.max(h1, Math.ceil(mins(e.end) / 60)); });
+  const cols = `44px repeat(${days.length},minmax(0,1fr))`, t = today(), now = new Date(), nowM = now.getHours() * 60 + now.getMinutes();
+  const head = `<div class="tg-head" style="grid-template-columns:${cols}"><span></span>${days.map(d => `<button class="${d === t ? 'today' : ''}${d === ui.sel ? ' sel' : ''}" data-act="select-date" data-date="${d}">${DOW[parse(d).getDay()]}<b>${parse(d).getDate()}</b></button>`).join('')}</div>`;
+  let hours = ''; for (let h = h0; h < h1; h++) hours += `<div style="height:${H}px">${fmtHour(h)}</div>`;
+  const colHTML = days.map((d, i) => {
+    const evs = per[i], ends = [];
+    evs.forEach(e => { let c = ends.findIndex(x => x <= mins(e.start)); if (c < 0) c = ends.length; ends[c] = mins(e.end); e._c = c; });
+    const n = Math.max(1, ends.length);
+    return `<div class="col" data-act="grid-new" data-date="${d}" data-h0="${h0}" style="height:${(h1 - h0) * H}px">
+      ${d === t && nowM >= h0 * 60 && nowM < h1 * 60 ? `<div class="nowline" style="top:${(nowM - h0 * 60) / 60 * H}px"></div>` : ''}
+      ${evs.map(e => `<button class="ev${e.kind === 'session' ? ' sess' : ''}" data-act="edit-event" data-id="${esc(e.id)}" style="--c:${evColor(e)};top:${(mins(e.start) - h0 * 60) / 60 * H + 1}px;height:${Math.max(20, (mins(e.end) - mins(e.start)) / 60 * H - 2)}px;left:calc(${e._c / n * 100}% + 2px);width:calc(${100 / n}% - 4px)" title="${esc(e.title)}, ${fmtTime(e.start)} to ${fmtTime(e.end)}, ${esc(mName(e.createdBy))}"><b>${esc(e.title)}</b>${fmtTime(e.start)} ${e.kind === 'session' ? 'Work session' : esc(mName(e.createdBy))}</button>`).join('')}</div>`;
+  }).join('');
+  return `<div class="tgrid">${head}<div class="tg-body" style="grid-template-columns:${cols};padding-top:8px"><div class="hours">${hours}</div>${colHTML}</div></div><div class="small muted" style="margin-top:8px">Click an empty time to add an event there. Click an event to edit it.</div>`;
+}
+function dayPanel(d) {
+  const evs = eventsOn(d), sess = evs.filter(e => e.kind === 'session'), mine = evs.filter(e => e.kind === 'event'), ts = tasksOn(d);
+  return `<aside class="card panel" id="dayPanel"><h2>${esc(fmtLong(d))}${d === today() ? ' <span class="pill sess">Today</span>' : ''}</h2>
+    <section><h3>Tasks and goals <span>${ts.filter(t => !t.done).length} unfinished</span></h3>
+      ${ts.length ? progHTML(ts) + `<ul class="tasks">${ts.map(taskHTML).join('')}</ul>` : '<div class="empty">No tasks planned for this day.</div>'}${quickAdd(d)}</section>
+    <section><h3>Work sessions</h3>${sess.length ? `<div class="stack">${sess.map(e => sessionHTML(e)).join('')}</div>` : '<div class="empty">None scheduled.</div>'}</section>
+    <section><h3>Who is busy</h3>${mine.length ? `<div class="stack">${mine.map(eventRowHTML).join('')}</div>` : '<div class="empty">No personal events on this day.</div>'}</section></aside>`;
+}
+
+/* ---------- availability ---------- */
+function teamSlot(date, h, dayEvents, ms) {
+  const sts = ms.map(m => slotStatus(m.id, date, h, dayEvents));
+  return { free: sts.filter(s => s === 'f').length, n: ms.length, sts };
+}
+function vAvailability() {
+  const ws = ui.availWeek, days = Array.from({length: 7}, (_, i) => addDays(ws, i)), t = today();
+  const all = members(), ms = all.filter(m => hasAvail(m.id) || (m.id === meId && draft)), missing = all.filter(m => !ms.includes(m));
+  const tabs = `<div class="seg" role="group"><button class="${ui.availTab === 'team' ? 'on' : ''}" data-act="avail-tab" data-tab="team">Team overview</button><button class="${ui.availTab === 'mine' ? 'on' : ''}" data-act="avail-tab" data-tab="mine">My availability</button></div>`;
+  if (ui.availTab === 'mine') {
+    const slots = draft || Store.data.avail[meId]?.slots || {};
+    let g = '<span></span>' + DOW.map(x => `<div class="dh"><b>${x}</b></div>`).join('');
+    AH.forEach(h => { g += `<div class="h">${fmtHour(h)}</div>` + DOW.map((_, dw) => { const k = dw + '-' + h; return `<button class="acell my st-${slots[k] || ''}" data-slot="${k}" aria-label="${DOW[dw]} ${fmtHour(h)}: ${ST[slots[k] || '']}"></button>`; }).join(''); });
+    return `<div class="toolbar"><h1>My weekly availability</h1>${tabs}</div>
+      <div class="card"><p class="muted" style="margin:0 0 10px">Pick a status, then click or drag across the hours it applies to. This is your usual week, and it saves automatically. One-off plans go on the calendar as events, and they mark you busy for that time.</p>
+      <div class="row" style="margin-bottom:12px"><span class="small muted">Paint with</span>${[['f','Free'],['b','Busy'],['u','Unavailable'],['x','Clear']].map(([k, l]) => `<button class="btn sm${ui.paint === k ? ' on' : ''}" data-act="paint" data-p="${k}" aria-pressed="${ui.paint === k}">${l}</button>`).join('')}
+        <button class="btn sm danger" data-act="avail-clear" style="margin-left:auto">Clear my whole week</button></div>
+      <div class="agrid" id="myGrid">${g}</div>
+      <div class="legend"><span><i style="background:var(--good)"></i>Free</span><span><i style="background:var(--bad)"></i>Busy</span><span><i style="background:var(--muted)"></i>Unavailable</span><span><i style="background:var(--sunk)"></i>Not set</span></div></div>`;
+  }
+  const evByDay = Object.fromEntries(days.map(d => [d, list('events').filter(e => e.date === d)]));
+  const grid = {}; days.forEach(d => AH.forEach(h => grid[d + '|' + h] = teamSlot(d, h, evByDay[d], ms)));
+  let g = '<span></span>' + days.map(d => `<div class="dh">${DOW[parse(d).getDay()]}<b>${parse(d).getDate()}</b></div>`).join('');
+  AH.forEach(h => { g += `<div class="h">${fmtHour(h)}</div>` + days.map(d => { const c = grid[d + '|' + h], r = c.n ? c.free / c.n : 0; const cls = c.n && c.free === c.n ? 'all' : r >= .66 ? 'l3' : r >= .34 ? 'l2' : r > 0 ? 'l1' : ''; return `<button class="acell ${cls}${d < t ? ' past' : ''}" data-act="slot" data-date="${d}" data-h="${h}" aria-label="${esc(fmtShort(d))} ${fmtHour(h)}: ${c.free} of ${c.n} free">${c.n ? c.free : ''}</button>`; }).join(''); });
+  // best times: longest runs where everyone is free, otherwise where the most people are free
+  const runs = target => { const out = []; days.filter(d => d >= t).forEach(d => { let s = null; AH.concat([99]).forEach(h => { const ok = h !== 99 && grid[d + '|' + h].free >= target; if (ok && s == null) s = h; if (!ok && s != null) { out.push({d, s, e: h === 99 ? AH[AH.length - 1] + 1 : h}); s = null; } }); }); return out.sort((a, b) => (b.e - b.s) - (a.e - a.s) || a.d.localeCompare(b.d) || a.s - b.s).slice(0, 5); };
+  let best = [], label = '';
+  if (ms.length) {
+    best = runs(ms.length); label = ms.length === 1 ? 'Free' : `All ${ms.length} free`;
+    if (!best.length && ms.length > 1) { const mx = Math.max(0, ...Object.values(grid).map(c => c.free)); if (mx > 0) { best = runs(mx); label = `${mx} of ${ms.length} free`; } }
+  }
+  return `<div class="toolbar"><h1>Team availability</h1>
+      <div class="seg" role="group" aria-label="Week"><button data-act="avail-nav" data-dir="-1" aria-label="Previous week">&#8249;</button><button data-act="avail-nav" data-dir="0">This week</button><button data-act="avail-nav" data-dir="1" aria-label="Next week">&#8250;</button></div>${tabs}</div>
+    ${!hasAvail(meId) ? `<div class="banner">You have not entered your availability yet. <button class="btn sm" data-act="avail-tab" data-tab="mine">Set it now</button></div>` : ''}
+    <div class="avail-wrap">
+      <div class="card"><h2>Week of ${esc(fmtD(ws, {month:'long', day:'numeric'}))} <span class="count">number of people free each hour</span></h2>
+        <div class="agrid">${g}</div>
+        <div class="legend"><span><i style="background:var(--good)"></i>Everyone free</span><span><i style="background:color-mix(in srgb,var(--good) 40%,var(--surface))"></i>Some free</span><span><i style="background:var(--sunk)"></i>No one free</span><span>Click an hour to see who is free and schedule a session.</span></div>
+        ${missing.length ? `<div class="small muted">Not counted yet because they have not entered availability: ${missing.map(m => who(m.id)).join(' ')}</div>` : ''}</div>
+      <div class="stack">
+        <div class="card"><h2>Best times to meet</h2>
+          ${best.length ? `<ul class="best">${best.map(b => `<li><span><b>${esc(rel(b.d))}, ${fmtHour(b.s)} to ${fmtHour(b.e % 24)}</b><span class="small muted">${label}, ${b.e - b.s} hour${b.e - b.s === 1 ? '' : 's'}</span></span><button class="btn sm primary" data-act="new-event" data-kind="session" data-date="${b.d}" data-start="${pad(b.s)}:00" data-end="${pad(Math.min(b.e, b.s + 2))}:00">Schedule</button></li>`).join('')}</ul>` : `<div class="empty">${ms.length ? 'No shared free time left this week. Try next week.' : 'Once teammates enter their availability, the best shared times appear here.'}</div>`}</div>
+        <div class="card"><h2>Team</h2><ul class="people">${all.map(m => `<li>${av(m.id, m.name)}<span class="n">${esc(m.name)}${m.id === meId ? ' (you)' : ''}</span><span class="pill ${hasAvail(m.id) ? 'f' : ''}">${hasAvail(m.id) ? 'Entered' : 'Not entered'}</span></li>`).join('')}</ul></div>
+      </div></div>`;
+}
+
+/* ---------- weekly tasks and progress ---------- */
+function vTasks() {
+  const ws = ui.taskWeek, days = Array.from({length: 7}, (_, i) => addDays(ws, i)), t = today(), end = days[6];
+  const wk = list('tasks').filter(x => x.date >= ws && x.date <= end), dn = wk.filter(x => x.done), open = wk.filter(x => !x.done);
+  const pct = wk.length ? Math.round(dn.length / wk.length * 100) : 0;
+  const cur = weekStart(t), lbl = ws === cur ? 'This week' : ws === addDays(cur, 7) ? 'Next week' : ws === addDays(cur, -7) ? 'Last week' : 'Week';
+  const per = members().map(m => { const a = wk.filter(x => x.assignee === m.id); return a.length ? `<span class="row small">${who(m.id)}<span class="muted">${a.filter(x => x.done).length}/${a.length}</span></span>` : ''; }).join('');
+  return `<div class="toolbar"><h1>${lbl}: ${esc(fmtD(ws, {month:'short', day:'numeric'}))} to ${esc(fmtD(end, {month:'short', day:'numeric'}))}</h1>
+      <div class="seg" role="group" aria-label="Week"><button data-act="task-nav" data-dir="-1" aria-label="Previous week">&#8249;</button><button data-act="task-nav" data-dir="0">This week</button><button data-act="task-nav" data-dir="1" aria-label="Next week">&#8250;</button></div>
+      ${open.length ? `<button class="btn" data-act="carry-week">Move ${open.length} unfinished to next week</button>` : ''}</div>
+    <div class="stats"><div class="stat"><b>${wk.length}</b><span>Planned</span></div><div class="stat"><b style="color:var(--good)">${dn.length}</b><span>Completed</span></div><div class="stat"><b style="color:${open.length ? 'var(--warn)' : 'inherit'}">${open.length}</b><span>Unfinished</span></div><div class="stat"><b>${pct}%</b><span>Complete</span></div></div>
+    <div class="card" style="margin-bottom:16px">${progHTML(wk)}<div class="row">${per || '<span class="small muted">Assign tasks to teammates to see each person\'s progress here.</span>'}</div></div>
+    <div class="week">${days.map(d => { const ts = tasksOn(d); return `<div class="card daycol${d === t ? ' today' : ''}"><h2><button data-act="goto-date" data-date="${d}" title="Open this day on the calendar">${esc(fmtShort(d))}${d === t ? ' (today)' : ''}</button><span class="count">${ts.filter(x => x.done).length}/${ts.length}</span></h2>
+      ${ts.length ? `<ul class="tasks">${ts.map(taskHTML).join('')}</ul>` : '<div class="empty">Nothing planned.</div>'}${quickAdd(d)}</div>`; }).join('')}</div>`;
+}
+
+/* ---------- modals ---------- */
+let modalCtx = null;
+function openModal(html, ctx) {
+  modalCtx = ctx || {};
+  $('#modalRoot').innerHTML = `<div class="overlay" data-act="overlay"><div class="modal" role="dialog" aria-modal="true">${html}</div></div>`;
+  const f = $('#modalRoot input:not([type=radio]):not([type=hidden]), #modalRoot textarea'); if (f && !modalCtx.noFocus) f.focus();
+}
+function closeModal() { $('#modalRoot').innerHTML = ''; modalCtx = null; }
+function confirmDlg(title, text, label, fn) {
+  openModal(`<h2>${esc(title)}</h2><p class="muted" style="margin:0">${esc(text)}</p><div class="m-foot"><button class="btn" data-act="close">Keep it</button><button class="btn primary" data-act="confirm-yes">${esc(label)}</button></div>`, {fn, noFocus: true});
+}
+function eventModal(id, pre) {
+  const e = id ? Store.data.events[id] : null;
+  if (id && !e) return;
+  const v = e || {kind: pre.kind || 'event', title: '', date: pre.date || today(), start: pre.start || '15:00', end: pre.end || '16:00', desc: '', goals: ''};
+  openModal(`<form data-form="event"><h2>${e ? (v.kind === 'session' ? 'Edit work session' : 'Edit event') : 'Add to the calendar'}</h2>
+    <div class="field"><span class="lab">Type</span><div class="row">
+      <label class="row"><input type="radio" name="kind" value="event" ${v.kind === 'event' ? 'checked' : ''}> My schedule (shows me as busy)</label>
+      <label class="row"><input type="radio" name="kind" value="session" ${v.kind === 'session' ? 'checked' : ''}> Team work session</label></div></div>
+    <div class="field"><label for="ev-title">Title</label><input type="text" id="ev-title" name="title" maxlength="120" value="${esc(v.title)}" placeholder="e.g. Soccer practice, or Build the homepage"></div>
+    <div class="field"><label for="ev-date">Date</label><input type="date" id="ev-date" name="date" value="${esc(v.date)}"></div>
+    <div class="two"><div class="field"><label for="ev-start">Starts</label><input type="time" id="ev-start" name="start" value="${esc(v.start)}"></div>
+      <div class="field"><label for="ev-end">Ends</label><input type="time" id="ev-end" name="end" value="${esc(v.end)}"></div></div>
+    <div class="field" id="goalsField"><label for="ev-goals">Purpose and goals of the session</label><textarea id="ev-goals" name="goals" maxlength="2000" placeholder="What do we want to get done?">${esc(v.goals)}</textarea></div>
+    <div class="field"><label for="ev-desc">Notes (optional)</label><textarea id="ev-desc" name="desc" maxlength="2000">${esc(v.desc)}</textarea></div>
+    ${e ? `<div class="small muted">Created by ${esc(mName(e.createdBy))}</div>` : ''}
+    <div class="err" id="formErr"></div>
+    <div class="m-foot">${e ? `<button class="btn danger left" type="button" data-act="del-event" data-id="${esc(id)}">${v.kind === 'session' ? 'Cancel session' : 'Delete'}</button>` : ''}<button class="btn" type="button" data-act="close">Close</button><button class="btn primary" type="submit">Save</button></div></form>`, {id});
+  syncKind();
+}
+function syncKind() { const f = $('#goalsField'); if (f) f.hidden = $('#modalRoot [name=kind]:checked')?.value !== 'session'; }
+function taskModal(id, date) {
+  const t = id ? Store.data.tasks[id] : null;
+  if (id && !t) return;
+  const v = t || {title: '', desc: '', date: date || today(), assignee: '', deadline: '', priority: 'med'};
+  openModal(`<form data-form="task"><h2>${t ? 'Edit task' : 'New task'}</h2>
+    <div class="field"><label for="tk-title">Task</label><input type="text" id="tk-title" name="title" maxlength="200" value="${esc(v.title)}" placeholder="e.g. Finish the homepage design"></div>
+    <div class="field"><label for="tk-desc">Description (optional)</label><textarea id="tk-desc" name="desc" maxlength="2000">${esc(v.desc)}</textarea></div>
+    <div class="two"><div class="field"><label for="tk-date">Planned for</label><input type="date" id="tk-date" name="date" value="${esc(v.date)}"></div>
+      <div class="field"><label for="tk-deadline">Deadline (optional)</label><input type="date" id="tk-deadline" name="deadline" value="${esc(v.deadline || '')}"></div></div>
+    <div class="two"><div class="field"><label for="tk-assignee">Assigned to</label><select id="tk-assignee" name="assignee"><option value="">Unassigned</option>${members().map(m => `<option value="${esc(m.id)}" ${v.assignee === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></div>
+      <div class="field"><label for="tk-priority">Priority</label><select id="tk-priority" name="priority">${Object.entries(PRIO).map(([k, l]) => `<option value="${k}" ${v.priority === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div></div>
+    ${t ? `<div class="small muted">Added by ${esc(mName(t.createdBy))}</div>` : ''}
+    <div class="err" id="formErr"></div>
+    <div class="m-foot">${t ? `<button class="btn danger left" type="button" data-act="del-task" data-id="${esc(id)}">Delete</button>` : ''}<button class="btn" type="button" data-act="close">Close</button><button class="btn primary" type="submit">Save</button></div></form>`, {id});
+}
+function moveModal(id) {
+  const t = Store.data.tasks[id]; if (!t) return;
+  openModal(`<form data-form="move"><h2>Move task</h2><p class="muted" style="margin:0 0 12px">${esc(t.title)}</p>
+    <div class="row" style="margin-bottom:12px"><button class="btn" type="button" data-act="move-to" data-date="${today()}">Today</button><button class="btn" type="button" data-act="move-to" data-date="${addDays(today(), 1)}">Tomorrow</button><button class="btn" type="button" data-act="move-to" data-date="${addDays(t.date, 7)}">One week later</button></div>
+    <div class="field"><label for="mv-date">Or pick a day</label><input type="date" id="mv-date" name="date" value="${esc(t.date)}"></div>
+    <div class="m-foot"><button class="btn" type="button" data-act="close">Close</button><button class="btn primary" type="submit">Move</button></div></form>`, {id, noFocus: true});
+}
+function profileModal() {
+  const me = Store.data.members[meId]; if (!me) return;
+  openModal(`<form data-form="profile"><h2>Your name and color</h2>
+    <div class="field"><label for="pf-name">Display name</label><input type="text" id="pf-name" name="name" maxlength="40" value="${esc(me.name)}"></div>
+    <div class="field"><span class="lab">Color</span><div class="swatches">${PALETTE.map(c => `<button type="button" class="${c === me.color ? 'on' : ''}" data-act="swatch" data-c="${c}" style="--c:${c}" aria-label="Color ${c}"></button>`).join('')}</div><input type="hidden" name="color" value="${esc(validColor(me.color))}"></div>
+    <div class="small muted">Everything you have added keeps your identity when you rename. Team: ${members().map(m => who(m.id)).join(' ')}</div>
+    <div class="err" id="formErr"></div>
+    <div class="m-foot"><button class="btn" type="button" data-act="close">Close</button><button class="btn primary" type="submit">Save</button></div></form>`);
+}
+function slotModal(date, h) {
+  const all = members(), de = list('events').filter(e => e.date === date);
+  openModal(`<h2>${esc(fmtLong(date))}, ${fmtHour(h)} to ${fmtHour((h + 1) % 24)}</h2>
+    <ul class="people">${all.map(m => { const s = slotStatus(m.id, date, h, de); return `<li>${av(m.id, m.name)}<span class="n">${esc(m.name)}</span><span class="pill ${s}">${ST[s]}</span></li>`; }).join('') || '<li class="muted">No teammates yet.</li>'}</ul>
+    <div class="m-foot"><button class="btn" data-act="close">Close</button><button class="btn primary" data-act="new-event" data-kind="session" data-date="${date}" data-start="${pad(h)}:00" data-end="${pad(Math.min(h + 1, 23))}:${h + 1 > 23 ? '59' : '00'}">Schedule a work session here</button></div>`, {noFocus: true});
+}
+
+/* ---------- actions ---------- */
+const newTask = (title, date, extra) => DB.set('tasks', uid(), {title, desc: '', date, assignee: null, deadline: '', priority: 'med', done: false, doneAt: null, doneBy: null, createdBy: meId, createdAt: Date.now(), ...extra});
+function delEvent(id) {
+  const e = Store.data.events[id]; if (!e) return;
+  confirmDlg(e.kind === 'session' ? 'Cancel this work session?' : 'Delete this event?', `"${e.title}" on ${fmtLong(e.date)} will be removed for everyone.`, e.kind === 'session' ? 'Cancel session' : 'Delete event', async () => {
+    const rs = list('rsvps').filter(r => r.eventId === id);
+    if (await DB.remove('events', id)) { rs.forEach(r => DB.remove('rsvps', r.id)); toast(e.kind === 'session' ? 'Work session cancelled' : 'Event deleted'); }
+  });
+}
+const acts = {
+  close: closeModal,
+  overlay(el, ev) { if (ev.target === el) closeModal(); },
+  'confirm-yes'() { const fn = modalCtx && modalCtx.fn; closeModal(); if (fn) fn(); },
+  profile: profileModal,
+  claim(el) { const m = Store.data.members[el.dataset.id]; if (!m) return; meId = el.dataset.id; myName = m.name; ls.set('huddle_id', meId); ls.set('huddle_name', myName); renderWelcome(); scheduleRender(); },
+  swatch(el) { el.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === el)); $('#modalRoot [name=color]').value = el.dataset.c; },
+  'toggle-task'(el) { const t = Store.data.tasks[el.dataset.id]; if (t) DB.update('tasks', el.dataset.id, {done: !t.done, doneAt: t.done ? null : Date.now(), doneBy: t.done ? null : meId}); },
+  'new-task'(el) { const q = document.getElementById('qa-' + el.dataset.date); taskModal(null, el.dataset.date); if (q && q.value.trim()) { $('#tk-title').value = q.value.trim(); q.value = ''; } },
+  'edit-task'(el) { taskModal(el.dataset.id); },
+  'move-task'(el) { moveModal(el.dataset.id); },
+  'move-to'(el) { const id = modalCtx.id; closeModal(); DB.update('tasks', id, {date: el.dataset.date}).then(ok => ok && toast('Moved to ' + rel(el.dataset.date))); },
+  'del-task'(el) { const id = el.dataset.id, t = Store.data.tasks[id]; if (!t) return; confirmDlg('Delete this task?', `"${t.title}" will be removed for everyone.`, 'Delete task', () => DB.remove('tasks', id).then(ok => ok && toast('Task deleted'))); },
+  'carry-today'() { const t = today(); const late = list('tasks').filter(x => !x.done && x.date < t); late.forEach(x => DB.update('tasks', x.id, {date: t})); toast(`Moved ${late.length} task${late.length === 1 ? '' : 's'} to today`); },
+  'carry-week'() { const ws = ui.taskWeek, open = list('tasks').filter(x => !x.done && x.date >= ws && x.date <= addDays(ws, 6)); confirmDlg('Move unfinished tasks?', `${open.length} unfinished task${open.length === 1 ? '' : 's'} will move to the same weekday next week.`, 'Move them', () => { open.forEach(x => DB.update('tasks', x.id, {date: addDays(x.date, 7)})); ui.taskWeek = addDays(ws, 7); toast('Moved to next week'); scheduleRender(); }); },
+  'new-event'(el) { eventModal(null, {kind: el.dataset.kind, date: el.dataset.date, start: el.dataset.start, end: el.dataset.end}); },
+  'edit-event'(el) { eventModal(el.dataset.id); },
+  'del-event'(el) { delEvent(el.dataset.id); },
+  rsvp(el) { const id = el.dataset.id, key = id + '_' + meId; if (rsvp(id, meId) === el.dataset.status) DB.remove('rsvps', key); else DB.set('rsvps', key, {eventId: id, memberId: meId, status: el.dataset.status, updatedAt: Date.now()}); },
+  'select-date'(el) { ui.sel = el.dataset.date; render(); if (window.innerWidth <= 1100 && ui.calView === 'month') $('#dayPanel')?.scrollIntoView({behavior: 'smooth', block: 'start'}); },
+  'goto-date'(el) { ui.sel = el.dataset.date; ui.calView = 'month'; location.hash = 'calendar'; },
+  'grid-new'(el, ev) { if (ev.target !== el) return; const h = Math.min(23, +el.dataset.h0 + Math.floor(ev.offsetY / 44)); eventModal(null, {kind: 'event', date: el.dataset.date, start: pad(h) + ':00', end: h === 23 ? '23:59' : pad(h + 1) + ':00'}); },
+  'cal-view'(el) { ui.calView = el.dataset.view; scheduleRender(); },
+  'cal-today'() { ui.sel = today(); scheduleRender(); },
+  'cal-nav'(el) { const dir = +el.dataset.dir; if (ui.calView === 'month') { const d = parse(ui.sel); const n = new Date(d.getFullYear(), d.getMonth() + dir, 1); const last = new Date(n.getFullYear(), n.getMonth() + 1, 0).getDate(); n.setDate(Math.min(d.getDate(), last)); ui.sel = ymd(n); } else ui.sel = addDays(ui.sel, dir * (ui.calView === 'week' ? 7 : 1)); scheduleRender(); },
+  filter(el) { const id = el.dataset.id; ui.hidden.has(id) ? ui.hidden.delete(id) : ui.hidden.add(id); scheduleRender(); },
+  'avail-tab'(el) { ui.availTab = el.dataset.tab; scheduleRender(); },
+  'avail-nav'(el) { const dir = +el.dataset.dir; ui.availWeek = dir ? addDays(ui.availWeek, dir * 7) : weekStart(today()); scheduleRender(); },
+  'task-nav'(el) { const dir = +el.dataset.dir; ui.taskWeek = dir ? addDays(ui.taskWeek, dir * 7) : weekStart(today()); scheduleRender(); },
+  paint(el) { ui.paint = el.dataset.p; scheduleRender(); },
+  'avail-clear'() { confirmDlg('Clear your whole week?', 'All of your weekly availability will be reset to not set.', 'Clear it', () => { draft = null; clearTimeout(saveT); DB.set('avail', meId, {slots: {}, updatedAt: Date.now()}); }); },
+  slot(el) { slotModal(el.dataset.date, +el.dataset.h); },
+};
+document.addEventListener('click', ev => {
+  const el = ev.target.closest('[data-act]');
+  if (!el) return;
+  const fn = acts[el.dataset.act];
+  if (fn) fn(el, ev);
+});
+document.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape' && modalCtx) closeModal();
+  if ((ev.key === 'Enter' || ev.key === ' ') && ev.target.matches('.cell[data-act]')) { ev.preventDefault(); ev.target.click(); }
+});
+document.addEventListener('change', ev => { if (ev.target.name === 'kind') syncKind(); });
+
+document.addEventListener('submit', ev => {
+  const form = ev.target.closest('[data-form]');
+  if (!form) return;
+  ev.preventDefault();
+  const f = Object.fromEntries(new FormData(form)), err = m => { const e = $('#formErr'); if (e) e.textContent = m; };
+  const kind = form.dataset.form;
+  if (kind === 'quick-task') {
+    const inp = form.querySelector('input'), title = inp.value.trim();
+    if (!title) { inp.focus(); return; }
+    inp.value = ''; newTask(title, form.dataset.date);
+  } else if (kind === 'task') {
+    const title = (f.title || '').trim();
+    if (!title) return err('Give the task a title.');
+    if (!f.date) return err('Pick the day this task is planned for.');
+    const id = modalCtx.id, patch = {title, desc: (f.desc || '').trim(), date: f.date, assignee: f.assignee || null, deadline: f.deadline || '', priority: f.priority};
+    closeModal();
+    (id ? DB.update('tasks', id, patch) : newTask(title, f.date, patch)).then(ok => ok && toast(id ? 'Task updated' : 'Task added'));
+  } else if (kind === 'move') {
+    if (!f.date) return;
+    const id = modalCtx.id; closeModal();
+    DB.update('tasks', id, {date: f.date}).then(ok => ok && toast('Moved to ' + rel(f.date)));
+  } else if (kind === 'event') {
+    const title = (f.title || '').trim();
+    if (!title) return err('Give it a title.');
+    if (!f.date) return err('Pick a date.');
+    if (!f.start || !f.end) return err('Set a start and end time.');
+    if (f.end <= f.start) return err('The end time must be after the start time.');
+    const id = modalCtx.id, old = id ? Store.data.events[id] : null, nid = id || uid();
+    const doc = {kind: f.kind === 'session' ? 'session' : 'event', title, date: f.date, start: f.start, end: f.end, desc: (f.desc || '').trim(), goals: f.kind === 'session' ? (f.goals || '').trim() : '', createdBy: old ? old.createdBy : meId, createdAt: old ? old.createdAt : Date.now()};
+    closeModal();
+    DB.set('events', nid, doc).then(ok => {
+      if (!ok) return;
+      if (!old && doc.kind === 'session') DB.set('rsvps', nid + '_' + meId, {eventId: nid, memberId: meId, status: 'yes', updatedAt: Date.now()});
+      toast(old ? 'Saved' : doc.kind === 'session' ? 'Work session scheduled' : 'Event added');
+    });
+    ui.sel = f.date; scheduleRender();
+  } else if (kind === 'profile') {
+    const name = (f.name || '').trim();
+    if (!name) return err('Your name cannot be empty.');
+    closeModal(); myName = name; ls.set('huddle_name', name);
+    DB.update('members', meId, {name, color: validColor(f.color)}).then(ok => ok && toast('Saved'));
+  }
+});
+
+/* ---------- availability painting ---------- */
+function paintCell(el) {
+  if (!el) return;
+  const k = el.dataset.slot;
+  if (ui.paint === 'x') delete draft[k]; else draft[k] = ui.paint;
+  el.className = 'acell my st-' + (draft[k] || '');
+}
+function queueSave() {
+  clearTimeout(saveT);
+  saveT = setTimeout(() => { if (!draft) return; const slots = draft; draft = null; DB.set('avail', meId, {slots, updatedAt: Date.now()}); }, 500);
+}
+document.addEventListener('pointerdown', ev => {
+  const el = ev.target.closest('.acell.my'); if (!el) return;
+  ev.preventDefault(); painting = true;
+  if (!draft) draft = {...(Store.data.avail[meId]?.slots || {})};
+  paintCell(el);
+});
+document.addEventListener('pointermove', ev => { if (painting) { const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.acell.my'); if (el) paintCell(el); } });
+const endPaint = () => { if (painting) { painting = false; queueSave(); } };
+document.addEventListener('pointerup', endPaint);
+document.addEventListener('pointercancel', endPaint);
+document.addEventListener('click', ev => { const el = ev.target.closest('.acell.my'); if (el && ev.detail === 0) { if (!draft) draft = {...(Store.data.avail[meId]?.slots || {})}; paintCell(el); queueSave(); } });
+
+/* ---------- start ---------- */
+setInterval(() => { if (!modalCtx && ui.view !== 'availability') scheduleRender(); }, 60000); // keeps "right now" and the time line fresh
+route(); renderWelcome(); connect();
+})();
+</script>
+</body>
+</html>
