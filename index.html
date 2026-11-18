@@ -229,7 +229,9 @@ textarea{resize:vertical;min-height:70px}
 .w-card{max-width:440px;width:100%}
 .w-card h1{font-size:30px;margin:18px 0 6px}
 .w-card p{color:var(--muted);margin:0 0 18px}
-.w-card form{display:flex;gap:8px}
+.w-card form{display:flex;flex-direction:column;gap:10px}
+.w-row{display:flex;gap:8px}
+.w-card .field{margin:0}
 .w-card input{font-size:17px;padding:11px 13px}
 .w-card .btn{padding:11px 18px;font-size:16px}
 .claim{margin-top:22px;padding-top:16px;border-top:1px solid var(--line)}
@@ -293,8 +295,15 @@ textarea{resize:vertical;min-height:70px}
     <h1>Welcome to the team workspace</h1>
     <p>Enter your name to get started. There is no password. Your name shows next to the events and tasks you add, and this device will remember you.</p>
     <form id="welcomeForm">
-      <input type="text" id="welcomeName" maxlength="40" placeholder="Your name" autocomplete="name" aria-label="Your name">
-      <button class="btn primary" type="submit">Join</button>
+      <div class="field" id="teamField" hidden>
+        <label for="welcomeTeam">Team code</label>
+        <input type="text" id="welcomeTeam" maxlength="40" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false">
+        <span class="small muted">Type the code your team shared, or open their invite link. Setting this up for a new team? <button type="button" class="ib" data-act="new-team">Make a new team code</button></span>
+      </div>
+      <div class="w-row">
+        <input type="text" id="welcomeName" maxlength="40" placeholder="Your name" autocomplete="name" aria-label="Your name">
+        <button class="btn primary" type="submit">Join</button>
+      </div>
     </form>
     <div class="err" id="welcomeErr"></div>
     <div class="claim" id="claim" hidden></div>
@@ -412,7 +421,7 @@ const shapeOk = {
   rsvps: d => typeof d.eventId === 'string' && typeof d.memberId === 'string' && typeof d.status === 'string',
 };
 function firebaseBackend(base) {
-  base = base.replace(/\/+$/, '') + '/huddle';
+  base = base.replace(/\/+$/, '') + '/teams/' + teamCode;
   let tree = {};
   const setAt = (segs, val) => {
     if (!segs.length) { tree = val && typeof val === 'object' ? val : {}; return; }
@@ -461,9 +470,9 @@ function claudeBackend() {
     },
   };
 }
-let loadTimer = setTimeout(() => { if (!Store.ready && !Store.failed) { Store.failed = 'The shared database cannot be reached yet. Still trying.'; scheduleRender(); } }, 10000);
+let loadTimer = setTimeout(() => { if (!Store.ready && !Store.failed && !needCode()) { Store.failed = 'The shared database cannot be reached yet. Still trying.'; scheduleRender(); } }, 10000);
 async function connect() {
-  if (FIREBASE_URL) { backend = firebaseBackend(FIREBASE_URL); backend.start(); return; }
+  if (FIREBASE_URL) { if (needCode() || backend) return; backend = firebaseBackend(FIREBASE_URL); backend.start(); return; }
   const hasClaude = () => window.claude && typeof window.claude.use === 'function';
   if (!hasClaude()) {
     try { const r = await fetch('api/health'); if (r.ok) { backend = httpBackend(); backend.start(); return; } } catch {}
@@ -489,11 +498,27 @@ function syncIdentity() {
   else if (myName) DB.set('members', meId, {name: myName, color: nextColor(), createdAt: Date.now()});
   renderWelcome();
 }
+// Team code: only needed with the Firebase database. It is the private part of the database path,
+// so it never appears in the site's code. Invite links carry it as ?team=CODE.
+const normCode = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const fmtCode = s => normCode(s).replace(/(.{4})(?=.)/g, '$1-');
+let teamCode = '';
+if (FIREBASE_URL) {
+  try {
+    const u = new URL(location.href), t = u.searchParams.get('team');
+    if (t) { ls.set('huddle_team', normCode(t)); u.searchParams.delete('team'); history.replaceState(null, '', u.pathname + u.search + u.hash); }
+  } catch {}
+  teamCode = normCode(ls.get('huddle_team'));
+}
+function needCode() { return !!FIREBASE_URL && teamCode.length < 16; }
+const inviteLink = () => location.origin + location.pathname + '?team=' + fmtCode(teamCode);
 function renderWelcome() {
-  const w = $('#welcome');
-  w.hidden = !!myName;
-  if (myName) return;
-  const list = members();
+  const w = $('#welcome'), nc = needCode();
+  w.hidden = !!myName && !nc;
+  if (w.hidden) return;
+  $('#teamField').hidden = !nc;
+  if (myName && !$('#welcomeName').value) $('#welcomeName').value = myName;
+  const list = nc ? [] : members();
   const claim = $('#claim');
   claim.hidden = !list.length;
   if (list.length) claim.innerHTML = `<div class="small muted">Already on the team from another device? Pick your name.</div><div class="row">${list.map(m => `<button class="fchip" data-act="claim" data-id="${esc(m.id)}" style="--c:${validColor(m.color)}"><i></i>${esc(m.name)}</button>`).join('')}</div>`;
@@ -502,6 +527,15 @@ $('#welcomeForm').addEventListener('submit', e => {
   e.preventDefault();
   const name = $('#welcomeName').value.trim();
   if (!name) { $('#welcomeErr').textContent = 'Type your name to continue.'; return; }
+  if (needCode()) {
+    const c = normCode($('#welcomeTeam').value);
+    if (c.length < 16) { $('#welcomeErr').textContent = 'Enter your team code. It has 16 letters and numbers.'; return; }
+    teamCode = c; ls.set('huddle_team', c);
+    myName = name; ls.set('huddle_name', name);
+    $('#welcomeErr').textContent = '';
+    renderWelcome(); scheduleRender(); connect();
+    return;
+  }
   if (!Store.ready) { $('#welcomeErr').textContent = 'Still connecting to the shared workspace. Try again in a moment.'; return; }
   myName = name; ls.set('huddle_name', name);
   DB.set('members', meId, {name, color: nextColor(), createdAt: Date.now()});
@@ -637,7 +671,7 @@ function vDashboard() {
   }).join('');
   return `
   <div class="hello"><div><h1>${esc(fmtLong(t))}</h1><p>${myName ? `Hi ${esc(myName)}. ` : ''}Here is where the project stands today.</p></div>
-    <div class="row"><button class="btn" data-act="new-event" data-kind="session" data-date="${t}">Schedule work session</button><button class="btn primary" data-act="new-task" data-date="${t}">Add task</button></div></div>
+    <div class="row">${FIREBASE_URL ? '<button class="btn" data-act="profile">Invite teammates</button>' : ''}<button class="btn" data-act="new-event" data-kind="session" data-date="${t}">Schedule work session</button><button class="btn primary" data-act="new-task" data-date="${t}">Add task</button></div></div>
   <div class="dash">
     <div class="card c7"><h2>Today's tasks <span class="count">${tTasks.filter(x => !x.done).length} left</span></h2>
       ${tTasks.length ? progHTML(tTasks) + `<ul class="tasks">${tTasks.map(taskHTML).join('')}</ul>` : '<div class="empty">Nothing planned for today yet. Add the first task below.</div>'}
@@ -842,6 +876,9 @@ function profileModal() {
     <div class="field"><label for="pf-name">Display name</label><input type="text" id="pf-name" name="name" maxlength="40" value="${esc(me.name)}"></div>
     <div class="field"><span class="lab">Color</span><div class="swatches">${PALETTE.map(c => `<button type="button" class="${c === me.color ? 'on' : ''}" data-act="swatch" data-c="${c}" style="--c:${c}" aria-label="Color ${c}"></button>`).join('')}</div><input type="hidden" name="color" value="${esc(validColor(me.color))}"></div>
     <div class="small muted">Everything you have added keeps your identity when you rename. Team: ${members().map(m => who(m.id)).join(' ')}</div>
+    ${FIREBASE_URL ? `<div class="field" style="margin-top:14px"><label for="pf-invite">Invite link for teammates</label><div class="w-row"><input type="text" id="pf-invite" readonly value="${esc(inviteLink())}"><button type="button" class="btn" data-act="copy-invite">Copy</button></div>
+      <span class="small muted">Team code: <b>${esc(fmtCode(teamCode))}</b>. Anyone with this link or code can open and edit your team's workspace, so only share it with the team.</span>
+      <span><button type="button" class="ib" data-act="switch-team">Use a different team code on this device</button></span></div>` : ''}
     <div class="err" id="formErr"></div>
     <div class="m-foot"><button class="btn" type="button" data-act="close">Close</button><button class="btn primary" type="submit">Save</button></div></form>`);
 }
@@ -866,6 +903,9 @@ const acts = {
   overlay(el, ev) { if (ev.target === el) closeModal(); },
   'confirm-yes'() { const fn = modalCtx && modalCtx.fn; closeModal(); if (fn) fn(); },
   profile: profileModal,
+  'new-team'() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', r = crypto.getRandomValues(new Uint8Array(16)); $('#welcomeTeam').value = fmtCode(Array.from(r, x => A[x % A.length]).join('')); $('#welcomeName').focus(); },
+  'copy-invite'() { const el = $('#pf-invite'); navigator.clipboard.writeText(el.value).then(() => toast('Invite link copied'), () => { el.select(); toast('Press Ctrl+C to copy the selected link'); }); },
+  'switch-team'() { confirmDlg('Use a different team code?', 'This device will leave this workspace. Nothing is deleted, and you can come back with the same code or link.', 'Switch team', () => { ls.set('huddle_team', ''); location.href = location.pathname; }); },
   claim(el) { const m = Store.data.members[el.dataset.id]; if (!m) return; meId = el.dataset.id; myName = m.name; ls.set('huddle_id', meId); ls.set('huddle_name', myName); renderWelcome(); scheduleRender(); },
   swatch(el) { el.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === el)); $('#modalRoot [name=color]').value = el.dataset.c; },
   'toggle-task'(el) { const t = Store.data.tasks[el.dataset.id]; if (t) DB.update('tasks', el.dataset.id, {done: !t.done, doneAt: t.done ? null : Date.now(), doneBy: t.done ? null : meId}); },
