@@ -300,6 +300,7 @@ textarea{resize:vertical;min-height:70px}
         <input type="text" id="welcomeTeam" maxlength="40" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false">
         <span class="small muted">Type the code your team shared, or open their invite link. Setting this up for a new team? <button type="button" class="ib" data-act="new-team">Make a new team code</button></span>
       </div>
+      <input type="email" id="welcomeEmail" maxlength="120" placeholder="Your email (for task updates)" autocomplete="email" aria-label="Your email" hidden>
       <div class="w-row">
         <input type="text" id="welcomeName" maxlength="40" placeholder="Your name" autocomplete="name" aria-label="Your name">
         <button class="btn primary" type="submit">Join</button>
@@ -345,6 +346,73 @@ function toast(msg, bad) {
   el.textContent = msg;
   $('#toasts').append(el);
   setTimeout(() => el.remove(), bad ? 5000 : 2600);
+}
+
+/* ---------- notifications ---------- */
+// Pop-ups when a teammate adds a task, event or work session, or assigns a task to you.
+// Desktop pop-ups appear while the site is open in any tab and you are looking elsewhere;
+// while you are looking at the site, a small message appears inside the page instead.
+const canNotify = () => 'Notification' in window;
+const notifyOn = () => canNotify() && Notification.permission === 'granted' && ls.get('huddle_notify') === 'on';
+const notice = { tasks: null, events: null, assignee: {} };
+function signOut(message) {
+  ['huddle_name', 'huddle_email', 'huddle_team'].forEach(k => ls.set(k, ''));
+  ls.set('huddle_notice', message);
+  location.href = location.pathname;
+}
+function noticeChanges() {
+  if (!Store.ready) return;
+  const mine = Store.data.members[meId];
+  if (mine && mine.removed && myName) { myName = ''; signOut('The team owner removed you from this team.'); return; }
+  const fresh = [];
+  for (const col of ['tasks', 'events']) {
+    const cur = Store.data[col];
+    if (!notice[col]) { notice[col] = new Set(Object.keys(cur)); continue; }
+    for (const id in cur) {
+      if (notice[col].has(id)) continue;
+      notice[col].add(id);
+      const d = cur[id];
+      if (d && d.createdBy !== meId && Date.now() - (d.createdAt || 0) < 10 * 60e3) fresh.push({col, id, d});
+    }
+  }
+  const firstPass = !notice.assignedInit;
+  for (const [id, t] of Object.entries(Store.data.tasks)) {
+    const prev = notice.assignee[id];
+    notice.assignee[id] = t.assignee || null;
+    if (!firstPass && prev !== undefined && prev !== meId && t.assignee === meId && t.createdBy !== meId && !t.done) fresh.push({col: 'assigned', id, d: t});
+  }
+  notice.assignedInit = true;
+  if (!fresh.length) return;
+  if (fresh.length > 3) { announce('team-' + Date.now(), `${fresh.length} new updates from your team`, fresh.slice(0, 3).map(f => f.d.title).join(', ') + '…', fresh[0].d.date); return; }
+  for (const {col, id, d} of fresh) {
+    const who = mName(d.createdBy);
+    if (col === 'tasks') announce(id, `${who} added a task`, `${d.title} · ${rel(d.date)}${d.assignee === meId ? ' · assigned to you' : ''}`, d.date);
+    else if (col === 'assigned') announce(id + '-a', 'A task was assigned to you', `${d.title} · ${rel(d.date)}`, d.date);
+    else if (d.kind === 'session') announce(id, `${who} scheduled a work session`, `${d.title} · ${rel(d.date)}, ${fmtTime(d.start)}`, d.date);
+    else announce(id, `${who} added to the calendar`, `${d.title} · ${rel(d.date)}, ${fmtTime(d.start)}`, d.date);
+  }
+}
+function announce(tag, title, body, date) {
+  const away = document.hidden || !document.hasFocus();
+  if (away && notifyOn()) {
+    try {
+      const n = new Notification(title, {body, tag: 'huddle-' + tag});
+      n.onclick = () => { window.focus(); if (date) { ui.sel = date; ui.calView = 'month'; location.hash = 'calendar'; scheduleRender(); } n.close(); };
+      return;
+    } catch {}
+  }
+  toast(`${title}: ${body}`);
+}
+function enableNotify() {
+  if (!canNotify()) { toast('This browser does not support pop-up notifications.', true); return; }
+  if (Notification.permission === 'denied') { toast('Notifications are blocked for this site. Allow them in your browser settings (the icon left of the address bar), then try again.', true); return; }
+  Notification.requestPermission().then(p => {
+    if (p === 'granted') {
+      ls.set('huddle_notify', 'on'); scheduleRender();
+      try { new Notification('Notifications are on', {body: "You'll get a pop-up when a teammate adds something.", tag: 'huddle-test'}); } catch {}
+      toast('Notifications are on for this device');
+    } else toast('Notifications were not allowed.', true);
+  });
 }
 
 /* ---------- shared store ---------- */
@@ -400,8 +468,8 @@ function httpBackend() {
       es.onerror = () => setStatus('off');
       es.onmessage = e => {
         const m = JSON.parse(e.data);
-        if (m.t === 'snap') { COLS.forEach(c => Store.data[c] = m.state[c] || {}); markReady(); scheduleRender(); }
-        else if (m.t === 'op') { if (m.doc) Store.data[m.col][m.id] = m.doc; else delete Store.data[m.col][m.id]; scheduleRender(); }
+        if (m.t === 'snap') { COLS.forEach(c => Store.data[c] = m.state[c] || {}); markReady(); noticeChanges(); scheduleRender(); }
+        else if (m.t === 'op') { if (m.doc) Store.data[m.col][m.id] = m.doc; else delete Store.data[m.col][m.id]; noticeChanges(); scheduleRender(); }
       };
     },
     async write(op, col, id, data) {
@@ -413,6 +481,8 @@ function httpBackend() {
 // Backend 3: a free Firebase Realtime Database, used when the page is hosted as a plain static site.
 // Paste the database URL between the quotes, e.g. 'https://your-project-default-rtdb.firebaseio.com'
 const FIREBASE_URL = 'https://huddle-team-c43fc-default-rtdb.firebaseio.com';
+// Optional: address of the Google Apps Script that emails teammates about new items (see README).
+const EMAIL_URL = 'https://script.google.com/macros/s/AKfycbwLBQ7V94JuKNnejobXQ0m1FFNUiEhpeG-88e72HboKaOx7hUf6SrzhY8CWBO2mXFIPeA/exec';
 const shapeOk = {
   members: d => typeof d.name === 'string' && d.name && typeof d.createdAt === 'number',
   events: d => [d.title, d.date, d.start, d.end, d.createdBy].every(x => typeof x === 'string') && /^\d{4}-\d\d-\d\d$/.test(d.date) && /^\d\d:\d\d$/.test(d.start) && /^\d\d:\d\d$/.test(d.end),
@@ -431,7 +501,7 @@ function firebaseBackend(base) {
   };
   const rebuild = () => {
     COLS.forEach(c => { const o = {}, src = tree[c]; if (src && typeof src === 'object') for (const id in src) { const d = src[id]; if (d && typeof d === 'object' && shapeOk[c](d)) o[id] = d; } Store.data[c] = o; });
-    markReady(); scheduleRender();
+    markReady(); noticeChanges(); scheduleRender();
   };
   const segsOf = p => p.split('/').filter(Boolean);
   return {
@@ -461,7 +531,7 @@ function claudeBackend() {
         const o = {}; snap.docs.forEach(d => { o[d.id] = d.data(); });
         Store.data[c] = o; seen.add(c);
         if (seen.size === COLS.length) { markReady(); setStatus('live'); }
-        scheduleRender();
+        noticeChanges(); scheduleRender();
       }, () => { setStatus('off'); }));
     },
     write(op, col, id, data) {
@@ -494,8 +564,12 @@ function nextColor() {
 }
 function syncIdentity() {
   const mine = Store.data.members[meId];
-  if (mine) { if (mine.name !== myName) { myName = mine.name; ls.set('huddle_name', myName); } }
-  else if (myName) DB.set('members', meId, {name: myName, color: nextColor(), createdAt: Date.now()});
+  if (mine && mine.removed) {
+    if (myName) { myName = ''; ls.set('huddle_name', ''); $('#welcomeErr').textContent = 'You were removed from this team. Ask the team owner to let you back in.'; }
+  } else if (mine && mine.left) {
+    if (myName) DB.update('members', meId, {left: false, name: myName, ...(ls.get('huddle_email') ? {email: ls.get('huddle_email')} : {})});
+  } else if (mine) { if (mine.name !== myName) { myName = mine.name; ls.set('huddle_name', myName); } }
+  else if (myName) DB.set('members', meId, {name: myName, color: nextColor(), createdAt: Date.now(), ...(ls.get('huddle_email') ? {email: ls.get('huddle_email')} : {})});
   renderWelcome();
 }
 // Team code: only needed with the Firebase database. It is the private part of the database path,
@@ -517,6 +591,7 @@ function renderWelcome() {
   w.hidden = !!myName && !nc;
   if (w.hidden) return;
   $('#teamField').hidden = !nc;
+  $('#welcomeEmail').hidden = !EMAIL_URL;
   if (myName && !$('#welcomeName').value) $('#welcomeName').value = myName;
   const list = nc ? [] : members();
   const claim = $('#claim');
@@ -527,6 +602,9 @@ $('#welcomeForm').addEventListener('submit', e => {
   e.preventDefault();
   const name = $('#welcomeName').value.trim();
   if (!name) { $('#welcomeErr').textContent = 'Type your name to continue.'; return; }
+  const email = EMAIL_URL ? $('#welcomeEmail').value.trim() : '';
+  if (EMAIL_URL && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { $('#welcomeErr').textContent = 'Enter your email. Everyone on the team gets an email when a task is added.'; return; }
+  if (email) ls.set('huddle_email', email);
   if (needCode()) {
     const c = normCode($('#welcomeTeam').value);
     if (c.length < 16) { $('#welcomeErr').textContent = 'Enter your team code. It has 16 letters and numbers.'; return; }
@@ -537,14 +615,16 @@ $('#welcomeForm').addEventListener('submit', e => {
     return;
   }
   if (!Store.ready) { $('#welcomeErr').textContent = 'Still connecting to the shared workspace. Try again in a moment.'; return; }
+  if (Store.data.members[meId] && Store.data.members[meId].removed) { $('#welcomeErr').textContent = 'You were removed from this team. Ask the team owner to let you back in.'; return; }
   myName = name; ls.set('huddle_name', name);
-  DB.set('members', meId, {name, color: nextColor(), createdAt: Date.now()});
+  DB.set('members', meId, {name, color: nextColor(), createdAt: Date.now(), ...(email ? {email} : {})});
   renderWelcome(); scheduleRender();
 });
 
 /* ---------- data access ---------- */
 const list = col => Object.entries(Store.data[col]).map(([id, d]) => ({id, ...d}));
-const members = () => list('members').sort((a, b) => a.createdAt - b.createdAt);
+const members = () => list('members').filter(m => !m.removed && !m.left).sort((a, b) => a.createdAt - b.createdAt);
+const ownerId = () => (members()[0] || {}).id;
 const mName = id => Store.data.members[id]?.name || 'Someone';
 const mColor = id => validColor(Store.data.members[id]?.color);
 const byStart = (a, b) => (a.date + a.start).localeCompare(b.date + b.start);
@@ -669,7 +749,10 @@ function vDashboard() {
     const st = cur ? 'b' : slotStatus(m.id, t, now.getHours(), tEv);
     return `<li>${av(m.id, m.name)}<span class="n">${esc(m.name)}${m.id === meId ? ' (you)' : ''}${cur ? `<small>${esc(cur.title)} until ${fmtTime(cur.end)}</small>` : ''}</span><span class="pill ${st}">${ST[st]}</span></li>`;
   }).join('');
+  const askNotify = canNotify() && !notifyOn() && Notification.permission !== 'denied' && ls.get('huddle_notify') !== 'dismissed';
   return `
+  ${EMAIL_URL && Store.data.members[meId] && !('email' in Store.data.members[meId]) ? `<div class="banner row" style="justify-content:space-between"><span>Add your email so you get a message every time a task is added.</span><button class="btn sm primary" data-act="profile">Add my email</button></div>` : ''}
+  ${askNotify ? `<div class="banner row" style="justify-content:space-between"><span>Get a pop-up on this computer when a teammate adds a task, event or work session.</span><span class="row"><button class="btn sm primary" data-act="notify-on">Turn on notifications</button><button class="btn sm" data-act="notify-dismiss">Not now</button></span></div>` : ''}
   <div class="hello"><div><h1>${esc(fmtLong(t))}</h1><p>${myName ? `Hi ${esc(myName)}. ` : ''}Here is where the project stands today.</p></div>
     <div class="row">${FIREBASE_URL ? '<button class="btn" data-act="profile">Invite teammates</button>' : ''}<button class="btn" data-act="new-event" data-kind="session" data-date="${t}">Schedule work session</button><button class="btn primary" data-act="new-task" data-date="${t}">Add task</button></div></div>
   <div class="dash">
@@ -870,12 +953,31 @@ function moveModal(id) {
     <div class="field"><label for="mv-date">Or pick a day</label><input type="date" id="mv-date" name="date" value="${esc(t.date)}"></div>
     <div class="m-foot"><button class="btn" type="button" data-act="close">Close</button><button class="btn primary" type="submit">Move</button></div></form>`, {id, noFocus: true});
 }
+function teamSectionHTML() {
+  const owner = ownerId(), mineOwner = owner === meId;
+  const removed = list('members').filter(m => m.removed);
+  return `<div class="field" style="margin-top:14px"><span class="lab">Team members</span>
+    <ul class="people">${members().map(m => `<li>${av(m.id, m.name)}<span class="n">${esc(m.name)}${m.id === meId ? ' (you)' : ''}</span>${m.id === owner ? '<span class="pill sess">Owner</span>' : ''}${mineOwner && m.id !== meId ? `<button type="button" class="btn sm danger" data-act="kick" data-id="${esc(m.id)}">Remove</button>` : ''}</li>`).join('')}</ul>
+    ${mineOwner && removed.length ? `<div class="small muted">Removed: ${removed.map(m => `${esc(m.name)} <button type="button" class="ib" data-act="unkick" data-id="${esc(m.id)}">Let back in</button>`).join(' ')}</div>` : ''}
+    <span class="small muted">The first person who joined is the owner. Only the owner can remove people.</span>
+    <span><button type="button" class="ib del" data-act="leave">Leave this team</button></span></div>`;
+}
 function profileModal() {
   const me = Store.data.members[meId]; if (!me) return;
   openModal(`<form data-form="profile"><h2>Your name and color</h2>
     <div class="field"><label for="pf-name">Display name</label><input type="text" id="pf-name" name="name" maxlength="40" value="${esc(me.name)}"></div>
     <div class="field"><span class="lab">Color</span><div class="swatches">${PALETTE.map(c => `<button type="button" class="${c === me.color ? 'on' : ''}" data-act="swatch" data-c="${c}" style="--c:${c}" aria-label="Color ${c}"></button>`).join('')}</div><input type="hidden" name="color" value="${esc(validColor(me.color))}"></div>
-    <div class="small muted">Everything you have added keeps your identity when you rename. Team: ${members().map(m => who(m.id)).join(' ')}</div>
+    ${EMAIL_URL ? `<div class="field"><label for="pf-email">Your email</label>
+      <input type="email" id="pf-email" name="email" maxlength="120" placeholder="you@gmail.com" value="${esc(me.email || '')}">
+      <span class="small muted">Everyone on the team gets an email each time a task is added. Clear this box to stop getting them. Your teammates can see this address.</span></div>` : ''}
+    <div class="field" style="margin-top:4px"><span class="lab">Notifications on this device</span>
+      ${!canNotify() ? '<span class="small muted">This browser does not support pop-up notifications.</span>'
+        : notifyOn() ? '<div class="row"><span class="pill f">On</span><button type="button" class="btn sm" data-act="notify-off">Turn off</button></div>'
+        : Notification.permission === 'denied' ? '<span class="small muted">Blocked in your browser settings. Click the icon left of the address bar, allow notifications for this site, then reload.</span>'
+        : '<div class="row"><span class="pill">Off</span><button type="button" class="btn sm primary" data-act="notify-on">Turn on</button></div>'}
+      <span class="small muted">Pop-ups appear while Huddle is open in a tab, even in the background. They stop when the tab is closed or the computer sleeps.</span></div>
+    <div class="small muted">Everything you have added keeps your identity when you rename.</div>
+    ${teamSectionHTML()}
     ${FIREBASE_URL ? `<div class="field" style="margin-top:14px"><label for="pf-invite">Invite link for teammates</label><div class="w-row"><input type="text" id="pf-invite" readonly value="${esc(inviteLink())}"><button type="button" class="btn" data-act="copy-invite">Copy</button></div>
       <span class="small muted">Team code: <b>${esc(fmtCode(teamCode))}</b>. Anyone with this link or code can open and edit your team's workspace, so only share it with the team.</span>
       <span><button type="button" class="ib" data-act="switch-team">Use a different team code on this device</button></span></div>` : ''}
@@ -890,7 +992,18 @@ function slotModal(date, h) {
 }
 
 /* ---------- actions ---------- */
-const newTask = (title, date, extra) => DB.set('tasks', uid(), {title, desc: '', date, assignee: null, deadline: '', priority: 'med', done: false, doneAt: null, doneBy: null, createdBy: meId, createdAt: Date.now(), ...extra});
+const newTask = (title, date, extra) => {
+  const doc = {title, desc: '', date, assignee: null, deadline: '', priority: 'med', done: false, doneAt: null, doneBy: null, createdBy: meId, createdAt: Date.now(), ...extra};
+  return DB.set('tasks', uid(), doc).then(ok => {
+    if (ok) emailTeam(`${mName(meId)} added a task: ${doc.title}`, [doc.title, `Planned for ${fmtLong(doc.date)}`, doc.assignee ? `Assigned to ${mName(doc.assignee)}` : 'Not assigned yet', doc.deadline ? `Deadline: ${fmtLong(doc.deadline)}` : '', `Priority: ${PRIO[doc.priority]}`, doc.desc].filter(Boolean).join('\n'));
+    return ok;
+  });
+};
+// Asks the team's email script to email everyone on the team about a new task. It never blocks the page.
+function emailTeam(subject, text) {
+  if (!EMAIL_URL || !teamCode) return;
+  try { fetch(EMAIL_URL, {method: 'POST', mode: 'no-cors', keepalive: true, headers: {'Content-Type': 'text/plain'}, body: JSON.stringify({team: teamCode, from: meId, subject, text})}).catch(() => {}); } catch {}
+}
 function delEvent(id) {
   const e = Store.data.events[id]; if (!e) return;
   confirmDlg(e.kind === 'session' ? 'Cancel this work session?' : 'Delete this event?', `"${e.title}" on ${fmtLong(e.date)} will be removed for everyone.`, e.kind === 'session' ? 'Cancel session' : 'Delete event', async () => {
@@ -905,6 +1018,23 @@ const acts = {
   profile: profileModal,
   'new-team'() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', r = crypto.getRandomValues(new Uint8Array(16)); $('#welcomeTeam').value = fmtCode(Array.from(r, x => A[x % A.length]).join('')); $('#welcomeName').focus(); },
   'copy-invite'() { const el = $('#pf-invite'); navigator.clipboard.writeText(el.value).then(() => toast('Invite link copied'), () => { el.select(); toast('Press Ctrl+C to copy the selected link'); }); },
+  kick(el) {
+    const m = Store.data.members[el.dataset.id]; if (!m || ownerId() !== meId) return;
+    confirmDlg(`Remove ${m.name}?`, `${m.name} will be signed out of this team and stop getting task emails. Their tasks and events stay. You can let them back in later.`, 'Remove', () =>
+      DB.update('members', el.dataset.id, {removed: true, email: null}).then(ok => ok && toast(`${m.name} was removed`)));
+  },
+  unkick(el) {
+    const m = Store.data.members[el.dataset.id]; if (!m || ownerId() !== meId) return;
+    closeModal(); DB.update('members', el.dataset.id, {removed: false}).then(ok => ok && toast(`${m.name} can rejoin with the invite link`));
+  },
+  leave() {
+    const others = members().filter(m => m.id !== meId), owner = ownerId() === meId;
+    confirmDlg('Leave this team?', (owner && others.length ? `You are the owner. ${others[0].name} becomes the owner when you leave. ` : '') + 'You will be signed out here and stop getting task emails. Your tasks stay. You can rejoin with the invite link.', 'Leave team', () =>
+      DB.update('members', meId, {left: true, email: null}).then(ok => { if (ok) signOut('You left the team.'); }));
+  },
+  'notify-on'() { const inModal = !!modalCtx; enableNotify(); if (inModal) closeModal(); },
+  'notify-off'() { ls.set('huddle_notify', 'off'); closeModal(); toast('Notifications are off for this device'); scheduleRender(); },
+  'notify-dismiss'() { ls.set('huddle_notify', 'dismissed'); scheduleRender(); },
   'switch-team'() { confirmDlg('Use a different team code?', 'This device will leave this workspace. Nothing is deleted, and you can come back with the same code or link.', 'Switch team', () => { ls.set('huddle_team', ''); location.href = location.pathname; }); },
   claim(el) { const m = Store.data.members[el.dataset.id]; if (!m) return; meId = el.dataset.id; myName = m.name; ls.set('huddle_id', meId); ls.set('huddle_name', myName); renderWelcome(); scheduleRender(); },
   swatch(el) { el.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === el)); $('#modalRoot [name=color]').value = el.dataset.c; },
@@ -985,8 +1115,14 @@ document.addEventListener('submit', ev => {
   } else if (kind === 'profile') {
     const name = (f.name || '').trim();
     if (!name) return err('Your name cannot be empty.');
+    const patch = {name, color: validColor(f.color)};
+    if (EMAIL_URL) {
+      const email = (f.email || '').trim();
+      if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return err('That email address does not look right. Fix it, or clear it to stop task emails.');
+      patch.email = email;
+    }
     closeModal(); myName = name; ls.set('huddle_name', name);
-    DB.update('members', meId, {name, color: validColor(f.color)}).then(ok => ok && toast('Saved'));
+    DB.update('members', meId, patch).then(ok => ok && toast('Saved'));
   }
 });
 
@@ -1016,6 +1152,7 @@ document.addEventListener('click', ev => { const el = ev.target.closest('.acell.
 /* ---------- start ---------- */
 setInterval(() => { if (!modalCtx && ui.view !== 'availability') scheduleRender(); }, 60000); // keeps "right now" and the time line fresh
 route(); renderWelcome(); connect();
+if (ls.get('huddle_notice')) { $('#welcomeErr').textContent = ls.get('huddle_notice'); ls.set('huddle_notice', ''); }
 })();
 </script>
 </body>
